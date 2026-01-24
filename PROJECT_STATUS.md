@@ -1,6 +1,8 @@
 # Social Scheduler - Project Status
 
-**Last Updated:** 2026-01-24 2:13 PM ET
+**Last Updated:** 2026-01-24 3:58 PM ET
+**Owner:** Dakrid
+**URL:** https://social-scheduler-pink.vercel.app
 
 ## Objective
 Build an Instagram post scheduler that allows scheduling posts with images and captions, then automatically publishes them at the scheduled time.
@@ -9,49 +11,67 @@ Build an Instagram post scheduler that allows scheduling posts with images and c
 - **Framework:** Next.js 15 (App Router)
 - **Database:** Turso (SQLite edge database)
 - **ORM:** Drizzle
-- **Hosting:** Vercel (planned)
+- **File Storage:** Vercel Blob
+- **Hosting:** Vercel
 - **Platform:** Instagram (via Meta Graph API)
 
 ---
 
 ## ✅ Completed
 
-### Database Setup
+### Infrastructure
+- [x] Next.js project scaffolded
 - [x] Turso database created (`social-scheduler-dakrid`)
-- [x] Credentials saved to `.env.local`
-- [x] Drizzle ORM installed and configured
+- [x] Drizzle ORM configured
+- [x] Vercel Blob storage connected
+- [x] Deployed to Vercel (auto-deploys on push)
+- [x] GitHub repo: `TheRealDatamir/social-scheduler`
 
-### Schema
-- [x] `accounts` table - stores connected social accounts
-- [x] `posts` table - stores scheduled posts with:
-  - `imageUrl` - public URL to image
+### Database Schema
+- [x] `accounts` table - social media accounts
+- [x] `posts` table with fields:
+  - `imageUrl` - Vercel Blob URL
   - `caption` - post text
   - `scheduledAt` - when to publish
+  - `isPinned` - 1 if manually pinned, 0 if auto-scheduled
   - `status` - pending/published/failed
-  - `platformPostId` - ID from Instagram after posting
+  - `platformPostId` - Instagram media ID after posting
   - `error` - error message if failed
 
 ### API Routes
-- [x] `GET /api/posts` - list all scheduled posts
-- [x] `POST /api/posts` - create a new scheduled post
-- [x] `POST /api/publish` - publish all due posts (cron endpoint)
+- [x] `GET /api/posts` - list all posts
+- [x] `POST /api/posts` - create new post
+- [x] `GET /api/posts/[id]` - get single post
+- [x] `PATCH /api/posts/[id]` - update post
+- [x] `DELETE /api/posts/[id]` - delete post (also deletes blob)
+- [x] `POST /api/upload` - upload image to Vercel Blob
+- [x] `GET /api/settings` - get scheduler settings
+- [x] `POST /api/publish` - cron endpoint to publish due posts
+
+### Frontend Features
+- [x] Upload tab - drag/drop or click to upload images
+- [x] Add captions to images before scheduling
+- [x] Auto-schedule based on frequency (daily, every-other-day, etc.)
+- [x] Pin posts to specific dates
+- [x] Schedule tab - view all scheduled posts
+- [x] Edit mode - click Edit to modify, Save/Cancel to confirm
+- [x] Delete posts (with confirmation)
+- [x] Validation - require captions before upload
+- [x] Auto-reschedule unpinned posts when editing dates
+- [x] Dates only (removed time selection for simplicity)
 
 ### Instagram Integration
 - [x] `src/lib/instagram.ts` - Instagram Graph API client
-- [x] Post creation flow (create container → publish)
-
-### Infrastructure
-- [x] `vercel.json` - cron job config (daily at midnight UTC)
-- [x] Project scaffolded with Next.js
+- [x] Two-step posting flow (create container → publish)
 
 ---
 
-## 🔶 In Progress / Pinned
+## 🔶 Pinned / On Hold
 
-### Instagram Credentials (PINNED)
+### Instagram Credentials (NEEDED TO ACTUALLY POST)
 - [ ] Get Instagram Business Account ID
-- [ ] Generate long-lived access token
-- [ ] Add to `.env.local`:
+- [ ] Generate long-lived access token (60 days)
+- [ ] Add to Vercel env vars:
   ```
   INSTAGRAM_BUSINESS_ACCOUNT_ID=...
   INSTAGRAM_ACCESS_TOKEN=...
@@ -61,47 +81,45 @@ Build an Instagram post scheduler that allows scheduling posts with images and c
 
 ---
 
-## 📋 TODO
+## 📋 TODO (Future)
 
-### Testing
-- [ ] Test API routes locally (`npm run dev`)
-- [ ] Verify database connection
-- [ ] Test Instagram posting (once credentials ready)
+### Before Going Live
+- [ ] Complete Instagram credential setup
+- [ ] Test actual Instagram posting
+- [ ] Set up cron secret for security
 
-### Deployment
-- [ ] Deploy to Vercel
-- [ ] Set environment variables in Vercel dashboard
-- [ ] Verify cron job runs
-
-### UI (Optional/Future)
-- [ ] Simple form to create scheduled posts
-- [ ] List view of scheduled/published posts
-- [ ] Status dashboard
+### Nice to Have
+- [ ] Settings persistence (save to DB instead of defaults)
+- [ ] Multiple Instagram accounts support
+- [ ] Post preview (how it'll look on Instagram)
+- [ ] Analytics/history of published posts
+- [ ] Bulk actions (delete multiple, reschedule all)
 
 ---
 
-## 📁 Project Structure
+## 📁 Key Files
 ```
-social-scheduler/
-├── src/
-│   ├── app/
-│   │   └── api/
-│   │       ├── posts/route.ts    # CRUD for posts
-│   │       └── publish/route.ts  # Cron endpoint
-│   ├── db/
-│   │   ├── schema.ts             # Drizzle schema
-│   │   └── index.ts              # DB client
-│   └── lib/
-│       └── instagram.ts          # Instagram API client
-├── drizzle.config.ts
-├── vercel.json
-├── .env.local                    # Credentials (not committed)
-└── PROJECT_STATUS.md             # This file
+src/
+├── app/
+│   └── api/
+│       ├── posts/route.ts        # List/create posts
+│       ├── posts/[id]/route.ts   # Get/update/delete post
+│       ├── upload/route.ts       # Image upload
+│       ├── settings/route.ts     # Settings
+│       └── publish/route.ts      # Cron endpoint
+├── components/
+│   └── SocialScheduler.tsx       # Main UI component
+├── db/
+│   ├── schema.ts                 # Drizzle schema
+│   └── index.ts                  # DB client
+└── lib/
+    └── instagram.ts              # Instagram API
 ```
 
 ---
 
 ## Notes
-- Instagram API requires images to be hosted at a public URL (can't upload directly)
-- Vercel free tier cron = once daily; Pro tier = every minute
-- Turso free tier = 9GB storage, plenty for this project
+- All naming uses camelCase (see CLAUDE.md)
+- Posts default to 12:00 PM for scheduling
+- Vercel free tier cron = once daily at midnight UTC
+- Deleting a post also deletes its image from Vercel Blob
