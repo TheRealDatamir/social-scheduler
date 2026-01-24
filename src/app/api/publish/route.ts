@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
           })
           .where(eq(posts.id, post.id));
 
-        results.push({ id: post.id, status: "published", mediaId: result.mediaId });
+        results.push({ id: post.id, status: "published", media_id: result.mediaId });
       } catch (error) {
         // Mark as failed
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
