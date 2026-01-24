@@ -139,22 +139,40 @@ export default function SocialScheduler() {
     ));
   }
 
-  function calculateScheduleDates(count: number, pinnedDates: string[]): Date[] {
+  function calculateScheduleDates(count: number, existingDates: string[]): Date[] {
     const dates: Date[] = [];
     const now = new Date();
     const [hour, minute] = settings.preferredTime.split(':').map(Number);
     
-    const currentDate = new Date(now);
-    currentDate.setHours(hour, minute, 0, 0);
+    // Find the latest existing scheduled date
+    let startDate = new Date(now);
+    startDate.setHours(hour, minute, 0, 0);
     
-    if (currentDate <= now) {
-      currentDate.setDate(currentDate.getDate() + 1);
+    if (existingDates.length > 0) {
+      const latestExisting = existingDates
+        .map(d => new Date(d))
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+      
+      // Start from the day after the latest scheduled post
+      if (latestExisting >= startDate) {
+        startDate = new Date(latestExisting);
+        startDate.setDate(startDate.getDate() + 1);
+        startDate.setHours(hour, minute, 0, 0);
+      }
     }
+    
+    // If start date is today but time has passed, move to tomorrow
+    if (startDate <= now) {
+      startDate.setDate(startDate.getDate() + 1);
+    }
+    
+    const currentDate = new Date(startDate);
     
     while (dates.length < count) {
       const dateStr = currentDate.toDateString();
       
-      if (!pinnedDates.includes(dateStr)) {
+      // Skip dates that already have posts
+      if (!existingDates.includes(dateStr)) {
         dates.push(new Date(currentDate));
       }
       
@@ -197,21 +215,22 @@ export default function SocialScheduler() {
       const pinnedImages = images.filter(img => img.isPinned);
       const unpinnedImages = images.filter(img => !img.isPinned);
       
-      // Get existing pinned dates
-      const existingPinnedDates = posts
-        .filter(p => p.isPinned)
+      // Get ALL existing scheduled dates (not just pinned)
+      const existingScheduledDates = posts
         .map(p => new Date(p.scheduledAt).toDateString());
       
+      // Also include any manually pinned dates from current upload
       const newPinnedDates = pinnedImages
         .filter(img => img.scheduledDate)
         .map(img => img.scheduledDate!.toDateString());
       
-      const allPinnedDates = [...existingPinnedDates, ...newPinnedDates];
-      const scheduleDates = calculateScheduleDates(unpinnedImages.length, allPinnedDates);
+      const allScheduledDates = [...existingScheduledDates, ...newPinnedDates];
+      const scheduleDates = calculateScheduleDates(unpinnedImages.length, allScheduledDates);
       
       console.log('Schedule debug:', {
-        unpinnedCount: unpinnedImages.length,
-        scheduleDates: scheduleDates.map(d => d.toISOString()),
+        existingPosts: posts.length,
+        existingDates: existingScheduledDates,
+        newScheduleDates: scheduleDates.map(d => d.toISOString()),
         postFrequency: settings.postFrequency
       });
       
