@@ -18,6 +18,7 @@ export const posts = sqliteTable("posts", {
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }).notNull(),
   publishedAt: integer("published_at", { mode: "timestamp" }),
   status: text("status").notNull().default("pending"), // 'pending', 'published', 'failed'
+  isPinned: integer("is_pinned").default(0), // 1 if manually pinned to date, 0 if auto-scheduled
   platformPostId: text("platform_post_id"), // Media ID from Instagram after posting
   error: text("error"), // Error message if failed
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),

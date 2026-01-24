@@ -315,21 +315,56 @@ export default function SocialScheduler() {
     try {
       const scheduledDate = new Date(editingDate + 'T12:00:00');
       
+      // Save the edited post (mark as pinned since user chose the date)
       await fetch(`/api/posts/${editingPostId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           caption: editingCaption,
           scheduledAt: scheduledDate.toISOString(),
+          isPinned: 1,
         }),
       });
       
-      setPosts(posts.map(post =>
+      // Update local state with the edited post
+      const updatedPosts = posts.map(post =>
         post.id === editingPostId 
-          ? { ...post, caption: editingCaption, scheduledAt: scheduledDate.toISOString() } 
+          ? { ...post, caption: editingCaption, scheduledAt: scheduledDate.toISOString(), isPinned: 1 } 
           : post
-      ));
+      );
       
+      // Get all pinned dates (including the newly pinned one)
+      const pinnedDates = updatedPosts
+        .filter(p => p.isPinned === 1)
+        .map(p => new Date(p.scheduledAt).toDateString());
+      
+      // Get unpinned posts that need rescheduling
+      const unpinnedPosts = updatedPosts.filter(p => p.isPinned !== 1);
+      
+      if (unpinnedPosts.length > 0) {
+        // Recalculate dates for unpinned posts
+        const newDates = calculateScheduleDates(unpinnedPosts.length, pinnedDates);
+        
+        // Update each unpinned post with new date
+        for (let i = 0; i < unpinnedPosts.length; i++) {
+          const post = unpinnedPosts[i];
+          const newDate = newDates[i];
+          
+          await fetch(`/api/posts/${post.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scheduledAt: newDate.toISOString() }),
+          });
+          
+          // Update in our local array
+          const idx = updatedPosts.findIndex(p => p.id === post.id);
+          if (idx !== -1) {
+            updatedPosts[idx] = { ...updatedPosts[idx], scheduledAt: newDate.toISOString() };
+          }
+        }
+      }
+      
+      setPosts(updatedPosts);
       cancelEditing();
     } catch (error) {
       console.error('Error saving post:', error);
