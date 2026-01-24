@@ -5,16 +5,16 @@ import { Upload, Calendar, Instagram, Trash2, Settings, Clock, Pin, Loader2 } fr
 
 interface Post {
   id: number;
-  image_url: string;
+  imageUrl: string;
   caption: string;
-  scheduled_at: string;
-  is_pinned: number;
+  scheduledAt: string;
+  isPinned: number;
   status: 'scheduled' | 'published' | 'failed';
 }
 
 interface Settings {
-  post_frequency: 'daily' | 'every-other-day' | '3x-week' | '5x-week';
-  preferred_time: string;
+  postFrequency: 'daily' | 'every-other-day' | '3x-week' | '5x-week';
+  preferredTime: string;
   timezone: string;
 }
 
@@ -37,8 +37,8 @@ export default function SocialScheduler() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   
   const [settings, setSettings] = useState<Settings>({
-    post_frequency: 'daily',
-    preferred_time: '14:00',
+    postFrequency: 'daily',
+    preferredTime: '14:00',
     timezone: 'America/New_York',
   });
 
@@ -142,7 +142,7 @@ export default function SocialScheduler() {
   function calculateScheduleDates(count: number, pinnedDates: string[]): Date[] {
     const dates: Date[] = [];
     const now = new Date();
-    const [hour, minute] = settings.preferred_time.split(':').map(Number);
+    const [hour, minute] = settings.preferredTime.split(':').map(Number);
     
     const currentDate = new Date(now);
     currentDate.setHours(hour, minute, 0, 0);
@@ -158,7 +158,7 @@ export default function SocialScheduler() {
         dates.push(new Date(currentDate));
       }
       
-      switch (settings.post_frequency) {
+      switch (settings.postFrequency) {
         case 'daily':
           currentDate.setDate(currentDate.getDate() + 1);
           break;
@@ -192,8 +192,8 @@ export default function SocialScheduler() {
       
       // Get existing pinned dates
       const existingPinnedDates = posts
-        .filter(p => p.is_pinned)
-        .map(p => new Date(p.scheduled_at).toDateString());
+        .filter(p => p.isPinned)
+        .map(p => new Date(p.scheduledAt).toDateString());
       
       const newPinnedDates = pinnedImages
         .filter(img => img.scheduledDate)
@@ -244,10 +244,10 @@ export default function SocialScheduler() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            image_url: publicUrl,
+            imageUrl: publicUrl,
             caption: img.caption,
-            scheduled_at: scheduledAt,
-            is_pinned: isPinned,
+            scheduledAt: scheduledAt,
+            isPinned: isPinned,
           }),
         });
         
@@ -289,14 +289,14 @@ export default function SocialScheduler() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          scheduled_at: new Date(newDateTime).toISOString(),
-          is_pinned: true,
+          scheduledAt: new Date(newDateTime).toISOString(),
+          isPinned: true,
         }),
       });
       
       setPosts(posts.map(post =>
         post.id === postId 
-          ? { ...post, scheduled_at: new Date(newDateTime).toISOString(), is_pinned: 1 } 
+          ? { ...post, scheduledAt: new Date(newDateTime).toISOString(), isPinned: 1 } 
           : post
       ));
     } catch (error) {
@@ -349,7 +349,7 @@ export default function SocialScheduler() {
                 Social Post Scheduler
               </h1>
               <p className="text-gray-600 mt-1">
-                Posting {settings.post_frequency.replace('-', ' ')} at {convertTo12Hour(settings.preferred_time)}
+                Posting {settings.postFrequency.replace('-', ' ')} at {convertTo12Hour(settings.preferredTime)}
               </p>
             </div>
             <button
@@ -372,8 +372,8 @@ export default function SocialScheduler() {
                   Posting Frequency
                 </label>
                 <select
-                  value={settings.post_frequency}
-                  onChange={(e) => updateSettings({ post_frequency: e.target.value as Settings['post_frequency'] })}
+                  value={settings.postFrequency}
+                  onChange={(e) => updateSettings({ postFrequency: e.target.value as Settings['postFrequency'] })}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2"
                 >
                   {frequencyOptions.map(opt => (
@@ -388,8 +388,8 @@ export default function SocialScheduler() {
                 </label>
                 <input
                   type="time"
-                  value={settings.preferred_time}
-                  onChange={(e) => updateSettings({ preferred_time: e.target.value })}
+                  value={settings.preferredTime}
+                  onChange={(e) => updateSettings({ preferredTime: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2"
                 />
               </div>
@@ -466,7 +466,7 @@ export default function SocialScheduler() {
                   )}
                 </button>
                 <p className="text-center text-sm text-gray-500 mt-3">
-                  Posts will be scheduled {settings.post_frequency.replace('-', ' ')} at {convertTo12Hour(settings.preferred_time)}
+                  Posts will be scheduled {settings.postFrequency.replace('-', ' ')} at {convertTo12Hour(settings.preferredTime)}
                 </p>
               </div>
             )}
@@ -554,11 +554,11 @@ export default function SocialScheduler() {
                     <div className="flex gap-6">
                       <div className="relative">
                         <img
-                          src={post.image_url}
+                          src={post.imageUrl}
                           alt="Scheduled post"
                           className="w-32 h-32 object-cover rounded-lg"
                         />
-                        {post.is_pinned === 1 && (
+                        {post.isPinned === 1 && (
                           <div className="absolute -top-2 -right-2 bg-yellow-500 text-white p-1 rounded-full">
                             <Pin size={16} />
                           </div>
@@ -569,7 +569,7 @@ export default function SocialScheduler() {
                           <div className="flex-1 mr-4">
                             <div className="text-xs text-gray-500 mb-1">Post #{index + 1}</div>
                             <div className="text-sm text-gray-600 mb-2">
-                              {new Date(post.scheduled_at).toLocaleDateString('en-US', { 
+                              {new Date(post.scheduledAt).toLocaleDateString('en-US', { 
                                 weekday: 'long',
                                 month: 'short',
                                 day: 'numeric',
@@ -580,13 +580,13 @@ export default function SocialScheduler() {
                             </div>
                             <input
                               type="datetime-local"
-                              value={new Date(post.scheduled_at).toISOString().slice(0, 16)}
+                              value={new Date(post.scheduledAt).toISOString().slice(0, 16)}
                               onChange={(e) => updatePostTime(post.id, e.target.value)}
                               className="border border-gray-300 rounded px-3 py-1 text-sm mb-2"
                             />
                           </div>
                           <div className="flex gap-2">
-                            {post.is_pinned === 1 && (
+                            {post.isPinned === 1 && (
                               <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full h-fit">
                                 Pinned
                               </span>
@@ -639,7 +639,7 @@ export default function SocialScheduler() {
                   <h3 className="text-xl font-bold mb-2">✅ Schedule Ready!</h3>
                   <p>Your posts are scheduled and ready to go.</p>
                   <p className="text-sm mt-2 opacity-90">
-                    Posting {settings.post_frequency.replace('-', ' ')} at {convertTo12Hour(settings.preferred_time)}
+                    Posting {settings.postFrequency.replace('-', ' ')} at {convertTo12Hour(settings.preferredTime)}
                   </p>
                 </div>
               </div>

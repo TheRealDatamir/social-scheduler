@@ -4,40 +4,38 @@ This file contains conventions and guidelines for AI assistants working on this 
 
 ## Naming Conventions
 
-### API Layer (snake_case)
-All API endpoints should use **snake_case** for JSON field names:
-```json
+### camelCase Everywhere
+This is an all-JavaScript/TypeScript project (Next.js). Use **camelCase** consistently across:
+- API request/response JSON
+- React components and props
+- TypeScript interfaces
+- Database schema fields
+
+```typescript
+// API Response
 {
   "id": 1,
-  "image_url": "https://...",
-  "scheduled_at": "2026-01-25T12:00:00Z",
-  "platform_post_id": "12345"
+  "imageUrl": "https://...",
+  "scheduledAt": "2026-01-25T12:00:00Z",
+  "platformPostId": "12345"
 }
-```
 
-### Frontend/TypeScript (camelCase)
-All frontend code, React components, and internal TypeScript should use **camelCase**:
-```typescript
+// TypeScript Interface
 interface Post {
   id: number;
   imageUrl: string;
   scheduledAt: Date;
   platformPostId: string;
 }
-```
 
-### Database Schema (camelCase)
-Drizzle schema uses camelCase internally, matching TypeScript conventions:
-```typescript
+// Drizzle Schema
 export const posts = sqliteTable("posts", {
   imageUrl: text("image_url").notNull(),
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }),
 });
 ```
 
-### Conversion
-API routes are responsible for converting between camelCase (internal) and snake_case (API response).
-Use helper functions like `toSnakeCase()` in route handlers.
+**Note:** Drizzle column names in the database can be snake_case (SQL convention), but the TypeScript field names should be camelCase.
 
 ## Tech Stack
 - **Framework:** Next.js 15 (App Router)
@@ -50,13 +48,13 @@ Use helper functions like `toSnakeCase()` in route handlers.
 ```
 src/
 ├── app/
-│   └── api/           # API routes (snake_case responses)
+│   └── api/           # API routes
 │       ├── posts/     # CRUD for scheduled posts
 │       ├── publish/   # Cron endpoint for publishing
 │       └── settings/  # User settings
-├── components/        # React components (camelCase)
+├── components/        # React components
 ├── db/
-│   ├── schema.ts      # Drizzle schema (camelCase)
+│   ├── schema.ts      # Drizzle schema
 │   └── index.ts       # DB client
 └── lib/
     └── instagram.ts   # Instagram API client

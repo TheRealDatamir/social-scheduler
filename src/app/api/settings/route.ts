@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Default settings (not persisted for now)
 const defaultSettings = {
-  post_frequency: "daily",
-  preferred_time: "14:00",
+  postFrequency: "daily",
+  preferredTime: "14:00",
   timezone: "America/New_York",
 };
 
