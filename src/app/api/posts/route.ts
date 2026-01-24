@@ -1,44 +1,44 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db, initDb, Post } from '@/lib/db';
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { posts } from "@/db/schema";
 
-// GET /api/posts - List all posts
+// GET /api/posts - List all scheduled posts
 export async function GET() {
   try {
-    await initDb();
-    const result = await db.execute('SELECT * FROM posts ORDER BY scheduled_at ASC');
-    return NextResponse.json(result.rows as Post[]);
+    const allPosts = await db.select().from(posts).orderBy(posts.scheduledAt);
+    return NextResponse.json(allPosts);
   } catch (error) {
-    console.error('Error fetching posts:', error);
-    return NextResponse.json({ error: 'Failed to fetch posts' }, { status: 500 });
+    console.error("Failed to fetch posts:", error);
+    return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
   }
 }
 
-// POST /api/posts - Create a new post
+// POST /api/posts - Create a new scheduled post
 export async function POST(request: NextRequest) {
   try {
-    await initDb();
     const body = await request.json();
-    const { image_url, caption, scheduled_at, is_pinned } = body;
+    const { imageUrl, caption, scheduledAt } = body;
 
-    if (!image_url || !scheduled_at) {
+    if (!imageUrl || !caption || !scheduledAt) {
       return NextResponse.json(
-        { error: 'image_url and scheduled_at are required' },
+        { error: "imageUrl, caption, and scheduledAt are required" },
         { status: 400 }
       );
     }
 
-    const result = await db.execute({
-      sql: `INSERT INTO posts (image_url, caption, scheduled_at, is_pinned) 
-            VALUES (?, ?, ?, ?)`,
-      args: [image_url, caption || '', scheduled_at, is_pinned ? 1 : 0],
-    });
+    const [newPost] = await db
+      .insert(posts)
+      .values({
+        imageUrl,
+        caption,
+        scheduledAt: new Date(scheduledAt),
+        status: "pending",
+      })
+      .returning();
 
-    return NextResponse.json({ 
-      id: Number(result.lastInsertRowid),
-      message: 'Post created' 
-    }, { status: 201 });
+    return NextResponse.json(newPost, { status: 201 });
   } catch (error) {
-    console.error('Error creating post:', error);
-    return NextResponse.json({ error: 'Failed to create post' }, { status: 500 });
+    console.error("Failed to create post:", error);
+    return NextResponse.json({ error: "Failed to create post" }, { status: 500 });
   }
 }
