@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { posts } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { del } from "@vercel/blob";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -50,22 +51,32 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/posts/[id] - Delete a post
+// DELETE /api/posts/[id] - Delete a post and its image
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const postId = parseInt(id, 10);
 
-    const [deleted] = await db
-      .delete(posts)
-      .where(eq(posts.id, postId))
-      .returning();
+    // Get the post first to get the image URL
+    const [post] = await db.select().from(posts).where(eq(posts.id, postId));
 
-    if (!deleted) {
+    if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, deleted });
+    // Delete from database
+    await db.delete(posts).where(eq(posts.id, postId));
+
+    // Delete image from Vercel Blob (if it's a blob URL)
+    if (post.imageUrl && post.imageUrl.includes("blob.vercel-storage.com")) {
+      try {
+        await del(post.imageUrl);
+      } catch (blobError) {
+        console.error("Failed to delete blob (continuing anyway):", blobError);
+      }
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to delete post:", error);
     return NextResponse.json({ error: "Failed to delete post" }, { status: 500 });
