@@ -121,10 +121,12 @@ export default function SocialScheduler() {
     setImages(images.filter(img => img.id !== imageId));
   }
 
-  function pinPostToDate(imageId: string, dateTime: string) {
+  function pinPostToDate(imageId: string, dateStr: string) {
+    // Set time to 12:00 PM for the selected date
+    const scheduledDate = new Date(dateStr + 'T12:00:00');
     setImages(images.map(img =>
       img.id === imageId
-        ? { ...img, scheduledDate: new Date(dateTime), isPinned: true }
+        ? { ...img, scheduledDate, isPinned: true }
         : img
     ));
   }
@@ -308,24 +310,27 @@ export default function SocialScheduler() {
     }
   }
 
-  async function updatePostTime(postId: number, newDateTime: string) {
+  async function updatePostTime(postId: number, newDate: string) {
     try {
+      // Set time to 12:00 PM for the selected date
+      const scheduledDate = new Date(newDate + 'T12:00:00');
+      
       await fetch(`/api/posts/${postId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          scheduledAt: new Date(newDateTime).toISOString(),
+          scheduledAt: scheduledDate.toISOString(),
           isPinned: true,
         }),
       });
       
       setPosts(posts.map(post =>
         post.id === postId 
-          ? { ...post, scheduledAt: new Date(newDateTime).toISOString(), isPinned: 1 } 
+          ? { ...post, scheduledAt: scheduledDate.toISOString(), isPinned: 1 } 
           : post
       ));
     } catch (error) {
-      console.error('Error updating post time:', error);
+      console.error('Error updating post date:', error);
     }
   }
 
@@ -519,18 +524,18 @@ export default function SocialScheduler() {
                       <div className="border-t pt-3">
                         <label className="text-xs font-semibold text-gray-600 block mb-2">
                           <Clock size={12} className="inline mr-1" />
-                          Schedule for specific date/time (optional)
+                          Pin to specific date (optional)
                         </label>
                         {!image.isPinned ? (
                           <input
-                            type="datetime-local"
+                            type="date"
                             onChange={(e) => pinPostToDate(image.id, e.target.value)}
                             className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                           />
                         ) : (
                           <div className="flex items-center justify-between bg-yellow-50 border border-yellow-200 rounded px-3 py-2">
                             <span className="text-sm font-semibold text-yellow-800">
-                              {image.scheduledDate?.toLocaleString()}
+                              {image.scheduledDate?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                             </span>
                             <button
                               onClick={() => unpinPost(image.id)}
@@ -585,13 +590,11 @@ export default function SocialScheduler() {
                                 month: 'short',
                                 day: 'numeric',
                                 year: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit',
                               })}
                             </div>
                             <input
-                              type="datetime-local"
-                              value={new Date(post.scheduledAt).toISOString().slice(0, 16)}
+                              type="date"
+                              value={new Date(post.scheduledAt).toISOString().slice(0, 10)}
                               onChange={(e) => updatePostTime(post.id, e.target.value)}
                               className="border border-gray-300 rounded px-3 py-1 text-sm mb-2"
                             />
