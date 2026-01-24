@@ -14,7 +14,6 @@ interface Post {
 
 interface Settings {
   postFrequency: 'daily' | 'every-other-day' | '3x-week' | '5x-week';
-  preferredTime: string;
   timezone: string;
 }
 
@@ -38,7 +37,6 @@ export default function SocialScheduler() {
   
   const [settings, setSettings] = useState<Settings>({
     postFrequency: 'daily',
-    preferredTime: '14:00',
     timezone: 'America/New_York',
   });
 
@@ -142,7 +140,10 @@ export default function SocialScheduler() {
   function calculateScheduleDates(count: number, existingDates: string[]): Date[] {
     const dates: Date[] = [];
     const now = new Date();
-    const [hour, minute] = settings.preferredTime.split(':').map(Number);
+    
+    // Use fixed time of 12:00 PM for all scheduled posts
+    const hour = 12;
+    const minute = 0;
     
     // Find the latest existing scheduled date
     let startDate = new Date(now);
@@ -373,7 +374,7 @@ export default function SocialScheduler() {
                 Social Post Scheduler
               </h1>
               <p className="text-gray-600 mt-1">
-                Posting {settings.postFrequency.replace('-', ' ')} at {convertTo12Hour(settings.preferredTime)}
+                Posting {settings.postFrequency.replace('-', ' ')}
               </p>
             </div>
             <button
@@ -390,33 +391,19 @@ export default function SocialScheduler() {
         {showSettings && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
             <h2 className="text-xl font-bold mb-4">Schedule Settings</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Posting Frequency
-                </label>
-                <select
-                  value={settings.postFrequency}
-                  onChange={(e) => updateSettings({ postFrequency: e.target.value as Settings['postFrequency'] })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                >
-                  {frequencyOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Preferred Post Time
-                </label>
-                <input
-                  type="time"
-                  value={settings.preferredTime}
-                  onChange={(e) => updateSettings({ preferredTime: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Posting Frequency
+              </label>
+              <select
+                value={settings.postFrequency}
+                onChange={(e) => updateSettings({ postFrequency: e.target.value as Settings['postFrequency'] })}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              >
+                {frequencyOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
           </div>
         )}
@@ -490,7 +477,7 @@ export default function SocialScheduler() {
                   )}
                 </button>
                 <p className="text-center text-sm text-gray-500 mt-3">
-                  Posts will be scheduled {settings.postFrequency.replace('-', ' ')} at {convertTo12Hour(settings.preferredTime)}
+                  Posts will be scheduled {settings.postFrequency.replace('-', ' ')}
                 </p>
               </div>
             )}
@@ -663,7 +650,7 @@ export default function SocialScheduler() {
                   <h3 className="text-xl font-bold mb-2">✅ Schedule Ready!</h3>
                   <p>Your posts are scheduled and ready to go.</p>
                   <p className="text-sm mt-2 opacity-90">
-                    Posting {settings.postFrequency.replace('-', ' ')} at {convertTo12Hour(settings.preferredTime)}
+                    Posting {settings.postFrequency.replace('-', ' ')}
                   </p>
                 </div>
               </div>
