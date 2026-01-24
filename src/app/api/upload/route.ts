@@ -17,12 +17,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    // Add unique timestamp to filename to prevent collisions
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const extension = file.name.split('.').pop() || 'jpg';
+    const uniqueFilename = `${timestamp}-${randomId}.${extension}`;
+
     // Convert File to Buffer for Vercel Blob
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     // Upload to Vercel Blob
-    const blob = await put(file.name, buffer, {
+    const blob = await put(uniqueFilename, buffer, {
       access: "public",
       contentType: file.type,
     });
