@@ -209,6 +209,12 @@ export default function SocialScheduler() {
       const allPinnedDates = [...existingPinnedDates, ...newPinnedDates];
       const scheduleDates = calculateScheduleDates(unpinnedImages.length, allPinnedDates);
       
+      console.log('Schedule debug:', {
+        unpinnedCount: unpinnedImages.length,
+        scheduleDates: scheduleDates.map(d => d.toISOString()),
+        postFrequency: settings.postFrequency
+      });
+      
       // Upload and create posts
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
