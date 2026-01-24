@@ -206,25 +206,17 @@ export default function SocialScheduler() {
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
         
-        // Get presigned URL
+        // Upload file directly
+        const formData = new FormData();
+        formData.append('file', img.file);
+        
         const uploadRes = await fetch('/api/upload', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: img.file.name,
-            contentType: img.file.type,
-          }),
+          body: formData,
         });
         
-        if (!uploadRes.ok) throw new Error('Failed to get upload URL');
-        const { uploadUrl, publicUrl } = await uploadRes.json();
-        
-        // Upload to R2
-        await fetch(uploadUrl, {
-          method: 'PUT',
-          body: img.file,
-          headers: { 'Content-Type': img.file.type },
-        });
+        if (!uploadRes.ok) throw new Error('Failed to upload image');
+        const { publicUrl } = await uploadRes.json();
         
         // Determine scheduled date
         let scheduledAt: string;
