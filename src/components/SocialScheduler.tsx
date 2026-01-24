@@ -184,6 +184,13 @@ export default function SocialScheduler() {
   }
 
   async function uploadAndSchedule() {
+    // Validate all images have captions
+    const missingCaptions = images.filter(img => !img.caption.trim());
+    if (missingCaptions.length > 0) {
+      alert(`Please add captions to all images. ${missingCaptions.length} image(s) missing captions.`);
+      return;
+    }
+
     setUploading(true);
     
     try {
