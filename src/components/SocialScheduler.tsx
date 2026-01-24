@@ -9,7 +9,7 @@ interface Post {
   caption: string;
   scheduledAt: string;
   isPinned: number;
-  status: 'scheduled' | 'published' | 'failed';
+  status: 'pending' | 'scheduled' | 'published' | 'failed';
 }
 
 interface Settings {
@@ -59,7 +59,7 @@ export default function SocialScheduler() {
       
       if (postsRes.ok) {
         const postsData = await postsRes.json();
-        setPosts(postsData.filter((p: Post) => p.status === 'scheduled'));
+        setPosts(postsData.filter((p: Post) => p.status === 'pending' || p.status === 'scheduled'));
       }
       
       if (settingsRes.ok) {
