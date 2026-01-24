@@ -34,6 +34,9 @@ export default function SocialScheduler() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [editingPostId, setEditingPostId] = useState<number | null>(null);
+  const [editingCaption, setEditingCaption] = useState<string>('');
+  const [editingDate, setEditingDate] = useState<string>('');
   
   const [settings, setSettings] = useState<Settings>({
     postFrequency: 'daily',
@@ -294,43 +297,43 @@ export default function SocialScheduler() {
     }
   }
 
-  async function updatePostCaption(postId: number, newCaption: string) {
-    try {
-      await fetch(`/api/posts/${postId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption: newCaption }),
-      });
-      
-      setPosts(posts.map(post =>
-        post.id === postId ? { ...post, caption: newCaption } : post
-      ));
-    } catch (error) {
-      console.error('Error updating post:', error);
-    }
+  function startEditingPost(post: Post) {
+    setEditingPostId(post.id);
+    setEditingCaption(post.caption);
+    setEditingDate(new Date(post.scheduledAt).toISOString().slice(0, 10));
   }
 
-  async function updatePostTime(postId: number, newDate: string) {
+  function cancelEditing() {
+    setEditingPostId(null);
+    setEditingCaption('');
+    setEditingDate('');
+  }
+
+  async function savePostEdits() {
+    if (!editingPostId) return;
+    
     try {
-      // Set time to 12:00 PM for the selected date
-      const scheduledDate = new Date(newDate + 'T12:00:00');
+      const scheduledDate = new Date(editingDate + 'T12:00:00');
       
-      await fetch(`/api/posts/${postId}`, {
+      await fetch(`/api/posts/${editingPostId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
+          caption: editingCaption,
           scheduledAt: scheduledDate.toISOString(),
-          isPinned: true,
         }),
       });
       
       setPosts(posts.map(post =>
-        post.id === postId 
-          ? { ...post, scheduledAt: scheduledDate.toISOString(), isPinned: 1 } 
+        post.id === editingPostId 
+          ? { ...post, caption: editingCaption, scheduledAt: scheduledDate.toISOString() } 
           : post
       ));
+      
+      cancelEditing();
     } catch (error) {
-      console.error('Error updating post date:', error);
+      console.error('Error saving post:', error);
+      alert('Failed to save changes');
     }
   }
 
@@ -584,20 +587,27 @@ export default function SocialScheduler() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1 mr-4">
                             <div className="text-xs text-gray-500 mb-1">Post #{index + 1}</div>
-                            <div className="text-sm text-gray-600 mb-2">
-                              {new Date(post.scheduledAt).toLocaleDateString('en-US', { 
-                                weekday: 'long',
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })}
-                            </div>
-                            <input
-                              type="date"
-                              value={new Date(post.scheduledAt).toISOString().slice(0, 10)}
-                              onChange={(e) => updatePostTime(post.id, e.target.value)}
-                              className="border border-gray-300 rounded px-3 py-1 text-sm mb-2"
-                            />
+                            {editingPostId === post.id ? (
+                              /* Edit Mode */
+                              <>
+                                <input
+                                  type="date"
+                                  value={editingDate}
+                                  onChange={(e) => setEditingDate(e.target.value)}
+                                  className="border border-blue-300 rounded px-3 py-1 text-sm mb-2 w-full"
+                                />
+                              </>
+                            ) : (
+                              /* Read-only Mode */
+                              <div className="text-sm text-gray-600 mb-2">
+                                {new Date(post.scheduledAt).toLocaleDateString('en-US', { 
+                                  weekday: 'long',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </div>
+                            )}
                           </div>
                           <div className="flex gap-2">
                             {post.isPinned === 1 && (
@@ -605,23 +615,57 @@ export default function SocialScheduler() {
                                 Pinned
                               </span>
                             )}
-                            <button
-                              onClick={() => setShowDeleteConfirm(post.id)}
-                              className="text-red-600 hover:text-red-700 text-sm font-semibold"
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            {editingPostId !== post.id && (
+                              <>
+                                <button
+                                  onClick={() => startEditingPost(post)}
+                                  className="text-blue-600 hover:text-blue-700 text-sm font-semibold"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => setShowDeleteConfirm(post.id)}
+                                  className="text-red-600 hover:text-red-700 text-sm font-semibold"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
-                        <div className="bg-gray-50 rounded-lg p-3 mb-2">
-                          <textarea
-                            value={post.caption}
-                            onChange={(e) => updatePostCaption(post.id, e.target.value)}
-                            placeholder="Add a caption..."
-                            className="w-full bg-transparent text-sm text-gray-700 border-none focus:outline-none resize-none"
-                            rows={2}
-                          />
-                        </div>
+                        {editingPostId === post.id ? (
+                          /* Edit Mode - Caption */
+                          <>
+                            <div className="bg-blue-50 rounded-lg p-3 mb-2 border border-blue-200">
+                              <textarea
+                                value={editingCaption}
+                                onChange={(e) => setEditingCaption(e.target.value)}
+                                placeholder="Add a caption..."
+                                className="w-full bg-transparent text-sm text-gray-700 border-none focus:outline-none resize-none"
+                                rows={3}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={savePostEdits}
+                                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
+                              >
+                                Save Changes
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          /* Read-only Mode - Caption */
+                          <div className="bg-gray-50 rounded-lg p-3 mb-2">
+                            <p className="text-sm text-gray-700">{post.caption}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
