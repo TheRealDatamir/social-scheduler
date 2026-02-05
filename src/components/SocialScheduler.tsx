@@ -224,9 +224,19 @@ export default function SocialScheduler() {
 
   // ─── Upload Handling ─────────────────────────────────────────────────────
 
+  const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — Instagram's limit
+
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
-    const newImages: LocalImage[] = files.map((file) => ({
+
+    const tooLarge = files.filter(f => f.size > MAX_FILE_SIZE);
+    if (tooLarge.length > 0) {
+      const names = tooLarge.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(', ');
+      alert(`These files exceed Instagram's 8MB limit and were skipped:\n${names}`);
+    }
+
+    const validFiles = files.filter(f => f.size <= MAX_FILE_SIZE);
+    const newImages: LocalImage[] = validFiles.map((file) => ({
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       file,
       preview: URL.createObjectURL(file),

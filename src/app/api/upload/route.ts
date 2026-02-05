@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
-        // Validate file type
+        // Instagram API limit is 8MB for images
         return {
           allowedContentTypes: [
             "image/jpeg",
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
             "image/heic",
             "image/heif",
           ],
-          maximumSizeInBytes: 20 * 1024 * 1024, // 20MB max
+          maximumSizeInBytes: 8 * 1024 * 1024, // 8MB — matches Instagram's limit
         };
       },
       onUploadCompleted: async ({ blob }) => {
