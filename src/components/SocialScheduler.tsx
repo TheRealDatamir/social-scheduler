@@ -1,17 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Upload, Calendar, Instagram, Trash2, Settings, Clock,
-  Loader2, GripVertical, CalendarPlus, ListOrdered, History,
-  ChevronUp, ChevronDown, Plus,
+  Loader2, ChevronUp, ChevronDown, Plus, History,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type PostType = 'queued' | 'scheduled' | 'extra';
 type PostStatus = 'pending' | 'published' | 'failed';
-type ActiveTab = 'upload' | 'queue' | 'scheduled' | 'history';
+type ActiveTab = 'upload' | 'schedule' | 'history';
 
 interface Post {
   id: number;
@@ -38,7 +37,21 @@ interface LocalImage {
   preview: string;
   caption: string;
   type: PostType;
-  scheduledDate: string; // YYYY-MM-DD or empty
+  scheduledDate: string;
+}
+
+// A single day in the projected schedule
+interface ScheduleDay {
+  date: Date;
+  dateStr: string; // YYYY-MM-DD
+  displayDate: string;
+  isPostingDay: boolean;
+  // Posts assigned to this day
+  scheduledPost: Post | null; // replaces queue
+  extraPosts: Post[]; // additional posts
+  queuedPost: Post | null; // from queue (only if no scheduledPost)
+  queueIndex: number | null; // position in queue for reorder controls
+  isEmpty: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -65,8 +78,6 @@ export default function SocialScheduler() {
   });
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
 
   // ─── Data Loading ────────────────────────────────────────────────────────
 
@@ -102,6 +113,99 @@ export default function SocialScheduler() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ─── Schedule Projection ─────────────────────────────────────────────────
+
+  const projectedSchedule = useMemo((): ScheduleDay[] => {
+    const days: ScheduleDay[] = [];
+    const queue = [...queuedPosts]; // clone so we can shift from it
+    let queuePointer = 0;
+
+    // Build lookup maps for scheduled & extra posts by date string
+    const scheduledByDate = new Map<string, Post[]>();
+    const extraByDate = new Map<string, Post[]>();
+
+    for (const post of scheduledPosts) {
+      if (!post.scheduledAt) continue;
+      const dateStr = toDateStr(new Date(post.scheduledAt));
+      if (post.type === 'scheduled') {
+        const arr = scheduledByDate.get(dateStr) || [];
+        arr.push(post);
+        scheduledByDate.set(dateStr, arr);
+      } else if (post.type === 'extra') {
+        const arr = extraByDate.get(dateStr) || [];
+        arr.push(post);
+        extraByDate.set(dateStr, arr);
+      }
+    }
+
+    // Find the furthest date we need to project to
+    const allDates = scheduledPosts
+      .filter(p => p.scheduledAt)
+      .map(p => new Date(p.scheduledAt!));
+
+    // Project enough days to place all queued posts + cover all scheduled dates + a buffer
+    const totalPostsToPlace = queue.length;
+    // Minimum 30 days, or enough to fit everything
+    const minDays = Math.max(30, totalPostsToPlace * 7, 14);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const cursor = new Date(today);
+    cursor.setDate(cursor.getDate() + 1); // Start from tomorrow
+
+    let daysProjected = 0;
+    let queuedPlaced = 0;
+
+    while (daysProjected < minDays || queuedPlaced < totalPostsToPlace) {
+      const dateStr = toDateStr(cursor);
+      const isPostingDay = checkIsPostingDay(cursor, settings.postingFrequency);
+
+      const scheduledForDay = scheduledByDate.get(dateStr) || [];
+      const extraForDay = extraByDate.get(dateStr) || [];
+      const hasScheduled = scheduledForDay.length > 0;
+      const hasExtra = extraForDay.length > 0;
+
+      // Only show this day if it's a posting day OR has scheduled/extra posts
+      if (isPostingDay || hasScheduled || hasExtra) {
+        let queuedPost: Post | null = null;
+        let queueIndex: number | null = null;
+
+        // If it's a posting day and no scheduled post replaces the queue, pull from queue
+        if (isPostingDay && !hasScheduled && queuePointer < queue.length) {
+          queuedPost = queue[queuePointer];
+          queueIndex = queuePointer;
+          queuePointer++;
+          queuedPlaced++;
+        }
+
+        const isEmpty = !hasScheduled && !hasExtra && !queuedPost;
+
+        days.push({
+          date: new Date(cursor),
+          dateStr,
+          displayDate: formatDateDisplay(cursor),
+          isPostingDay,
+          scheduledPost: scheduledForDay[0] || null, // Primary scheduled post
+          extraPosts: [...(scheduledForDay.length > 1 ? scheduledForDay.slice(1) : []), ...extraForDay],
+          queuedPost,
+          queueIndex,
+          isEmpty,
+        });
+      }
+
+      // Also handle non-posting days that have scheduled/extra (already covered above)
+
+      cursor.setDate(cursor.getDate() + 1);
+      daysProjected++;
+
+      // Safety cap
+      if (daysProjected > 365) break;
+    }
+
+    return days;
+  }, [queuedPosts, scheduledPosts, settings.postingFrequency]);
+
   // ─── Settings ────────────────────────────────────────────────────────────
 
   async function updateSettings(newSettings: Partial<AppSettings>) {
@@ -130,7 +234,6 @@ export default function SocialScheduler() {
       scheduledDate: '',
     }));
     setImages(prev => [...prev, ...newImages]);
-    // Reset file input so the same file can be selected again
     if (uploadInputRef.current) uploadInputRef.current.value = '';
   }
 
@@ -173,14 +276,12 @@ export default function SocialScheduler() {
 
     try {
       for (const img of images) {
-        // Upload file
         const formData = new FormData();
         formData.append('file', img.file);
         const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
         if (!uploadRes.ok) throw new Error('Failed to upload image');
         const { url } = await uploadRes.json();
 
-        // Create post
         const postBody: Record<string, unknown> = {
           imageUrl: url,
           caption: img.caption,
@@ -202,7 +303,7 @@ export default function SocialScheduler() {
 
       setImages([]);
       await loadData();
-      setActiveTab('queue');
+      setActiveTab('schedule');
     } catch (error) {
       console.error('Error uploading:', error);
       alert('Failed to upload posts. Please try again.');
@@ -211,48 +312,14 @@ export default function SocialScheduler() {
     }
   }
 
-  // ─── Queue Reordering (drag & drop) ─────────────────────────────────────
+  // ─── Queue Reordering ───────────────────────────────────────────────────
 
-  function handleDragStart(index: number) {
-    dragItem.current = index;
-  }
-
-  function handleDragEnter(index: number) {
-    dragOverItem.current = index;
-  }
-
-  async function handleDragEnd() {
-    if (dragItem.current === null || dragOverItem.current === null) return;
-    if (dragItem.current === dragOverItem.current) return;
-
-    const reordered = [...queuedPosts];
-    const [draggedItem] = reordered.splice(dragItem.current, 1);
-    reordered.splice(dragOverItem.current, 0, draggedItem);
-
-    dragItem.current = null;
-    dragOverItem.current = null;
-
-    setQueuedPosts(reordered);
-
-    // Persist new order
-    try {
-      await fetch('/api/posts/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderedIds: reordered.map(p => p.id) }),
-      });
-    } catch (error) {
-      console.error('Error reordering:', error);
-      await loadData(); // Reload on failure
-    }
-  }
-
-  async function moveQueueItem(index: number, direction: 'up' | 'down') {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
+  async function moveQueueItem(queueIndex: number, direction: 'up' | 'down') {
+    const newIndex = direction === 'up' ? queueIndex - 1 : queueIndex + 1;
     if (newIndex < 0 || newIndex >= queuedPosts.length) return;
 
     const reordered = [...queuedPosts];
-    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+    [reordered[queueIndex], reordered[newIndex]] = [reordered[newIndex], reordered[queueIndex]];
     setQueuedPosts(reordered);
 
     try {
@@ -325,16 +392,16 @@ export default function SocialScheduler() {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  function formatDate(dateStr: string | null): string {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-    });
-  }
+  const frequencyOptions = [
+    { value: 'daily', label: 'Daily' },
+    { value: 'every-other-day', label: 'Every Other Day' },
+    { value: '3x-week', label: '3x per Week (M/W/F)' },
+    { value: 'weekdays', label: 'Weekdays Only' },
+  ];
 
   function typeLabel(type: PostType): string {
     switch (type) {
-      case 'queued': return 'Queued';
+      case 'queued': return 'From Queue';
       case 'scheduled': return 'Scheduled';
       case 'extra': return 'Extra';
     }
@@ -348,12 +415,125 @@ export default function SocialScheduler() {
     }
   }
 
-  const frequencyOptions = [
-    { value: 'daily', label: 'Daily' },
-    { value: 'every-other-day', label: 'Every Other Day' },
-    { value: '3x-week', label: '3x per Week (M/W/F)' },
-    { value: 'weekdays', label: 'Weekdays Only' },
-  ];
+  function uploadTypeLabel(type: PostType): string {
+    switch (type) {
+      case 'queued': return 'Queued';
+      case 'scheduled': return 'Scheduled';
+      case 'extra': return 'Extra';
+    }
+  }
+
+  // ─── Post Card (reusable in schedule rows) ──────────────────────────────
+
+  function renderPostCard(post: Post, queueIndex: number | null = null) {
+    const isEditing = editingPostId === post.id;
+    const isDeleting = showDeleteConfirm === post.id;
+
+    return (
+      <div key={post.id} className="flex gap-3 items-start">
+        {/* Queue reorder controls */}
+        {post.type === 'queued' && queueIndex !== null && !isEditing && (
+          <div className="flex flex-col items-center gap-0.5 pt-1 flex-shrink-0">
+            <button
+              onClick={() => moveQueueItem(queueIndex, 'up')}
+              disabled={queueIndex === 0}
+              className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
+              title="Move up in queue"
+            >
+              <ChevronUp size={14} />
+            </button>
+            <span className="text-[10px] font-bold text-gray-400">#{queueIndex + 1}</span>
+            <button
+              onClick={() => moveQueueItem(queueIndex, 'down')}
+              disabled={queueIndex === queuedPosts.length - 1}
+              className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
+              title="Move down in queue"
+            >
+              <ChevronDown size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Thumbnail */}
+        <img src={post.imageUrl} alt="" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${typeBadgeClass(post.type)}`}>
+              {typeLabel(post.type)}
+            </span>
+            {!isEditing && (
+              <div className="flex gap-2">
+                <button onClick={() => startEditing(post)} className="text-blue-600 hover:text-blue-700 text-xs font-semibold">
+                  Edit
+                </button>
+                <button onClick={() => setShowDeleteConfirm(post.id)} className="text-red-500 hover:text-red-600">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {isEditing ? (
+            <div className="space-y-2 mt-1">
+              <textarea
+                value={editingCaption}
+                onChange={(e) => setEditingCaption(e.target.value)}
+                className="w-full border border-blue-300 rounded-lg p-2 text-sm"
+                rows={2}
+              />
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">Type</label>
+                <div className="flex gap-1.5">
+                  {(['queued', 'scheduled', 'extra'] as PostType[]).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setEditingType(t)}
+                      className={`px-2.5 py-1 rounded text-xs font-semibold ${
+                        editingType === t ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {uploadTypeLabel(t)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {(editingType === 'scheduled' || editingType === 'extra') && (
+                <input
+                  type="date"
+                  value={editingDate}
+                  onChange={(e) => setEditingDate(e.target.value)}
+                  className="w-full border border-blue-300 rounded px-3 py-1 text-sm"
+                />
+              )}
+              <div className="flex gap-2">
+                <button onClick={saveEdits} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-blue-700">
+                  Save
+                </button>
+                <button onClick={cancelEditing} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-gray-300">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
+          )}
+
+          {isDeleting && (
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => deletePost(post.id)} className="bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-red-700">
+                Confirm Delete
+              </button>
+              <button onClick={() => setShowDeleteConfirm(null)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-gray-300">
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -364,6 +544,8 @@ export default function SocialScheduler() {
       </div>
     );
   }
+
+  const totalPending = queuedPosts.length + scheduledPosts.length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 p-4">
@@ -377,7 +559,7 @@ export default function SocialScheduler() {
                 Social Post Scheduler
               </h1>
               <p className="text-gray-600 mt-1">
-                {queuedPosts.length} queued · {scheduledPosts.length} scheduled · Posting {settings.postingFrequency.replace(/-/g, ' ')}
+                {queuedPosts.length} in queue · {scheduledPosts.filter(p => p.type === 'scheduled').length} scheduled · {scheduledPosts.filter(p => p.type === 'extra').length} extra · Posting {settings.postingFrequency.replace(/-/g, ' ')}
               </p>
             </div>
             <button
@@ -396,9 +578,7 @@ export default function SocialScheduler() {
             <h2 className="text-xl font-bold mb-4">Posting Settings</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Posting Frequency
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Posting Frequency</label>
                 <select
                   value={settings.postingFrequency}
                   onChange={(e) => updateSettings({ postingFrequency: e.target.value })}
@@ -410,9 +590,7 @@ export default function SocialScheduler() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Posting Time
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Posting Time</label>
                 <input
                   type="time"
                   value={settings.postingTime}
@@ -428,8 +606,7 @@ export default function SocialScheduler() {
         <div className="flex gap-2 mb-6 flex-wrap">
           {[
             { key: 'upload' as ActiveTab, icon: Upload, label: 'Upload' },
-            { key: 'queue' as ActiveTab, icon: ListOrdered, label: `Queue (${queuedPosts.length})` },
-            { key: 'scheduled' as ActiveTab, icon: CalendarPlus, label: `Scheduled (${scheduledPosts.length})` },
+            { key: 'schedule' as ActiveTab, icon: Calendar, label: `Schedule (${totalPending})` },
             { key: 'history' as ActiveTab, icon: History, label: 'History' },
           ].map(tab => (
             <button
@@ -456,7 +633,6 @@ export default function SocialScheduler() {
         {/* ─── Upload Tab ───────────────────────────────────────────────── */}
         {activeTab === 'upload' && (
           <div className="space-y-6">
-            {/* Drop zone */}
             <div className="bg-white rounded-lg shadow-lg p-8">
               <label className="block cursor-pointer">
                 <div className="border-4 border-dashed border-purple-300 rounded-lg p-12 text-center hover:border-purple-500 transition-colors bg-purple-50">
@@ -475,7 +651,6 @@ export default function SocialScheduler() {
               </label>
             </div>
 
-            {/* Staged images */}
             {images.length > 0 && (
               <>
                 <div className="bg-white rounded-lg shadow-lg p-6">
@@ -504,11 +679,10 @@ export default function SocialScheduler() {
                           <Trash2 size={16} />
                         </button>
                         <div className={`absolute top-2 left-2 px-3 py-1 rounded-full text-sm font-semibold ${typeBadgeClass(image.type)}`}>
-                          {typeLabel(image.type)}
+                          {uploadTypeLabel(image.type)}
                         </div>
                       </div>
                       <div className="p-4 space-y-3">
-                        {/* Type selector */}
                         <div>
                           <label className="text-xs font-semibold text-gray-600 block mb-1">Post Type</label>
                           <div className="flex gap-2">
@@ -522,13 +696,12 @@ export default function SocialScheduler() {
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                 }`}
                               >
-                                {typeLabel(t)}
+                                {uploadTypeLabel(t)}
                               </button>
                             ))}
                           </div>
                         </div>
 
-                        {/* Date picker for scheduled/extra */}
                         {(image.type === 'scheduled' || image.type === 'extra') && (
                           <div>
                             <label className="text-xs font-semibold text-gray-600 block mb-1">
@@ -544,7 +717,6 @@ export default function SocialScheduler() {
                           </div>
                         )}
 
-                        {/* Caption */}
                         <div>
                           <label className="text-xs font-semibold text-gray-600 block mb-1">Caption</label>
                           <textarea
@@ -570,242 +742,71 @@ export default function SocialScheduler() {
           </div>
         )}
 
-        {/* ─── Queue Tab ────────────────────────────────────────────────── */}
-        {activeTab === 'queue' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-lg shadow-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-800">Post Queue</h2>
-                  <p className="text-sm text-gray-500">
-                    Drag to reorder. Next post at the top goes out first.
-                  </p>
-                </div>
-                <span className="bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">
-                  {queuedPosts.length} in queue
-                </span>
-              </div>
-            </div>
-
-            {queuedPosts.length > 0 ? (
-              queuedPosts.map((post, index) => (
-                <div
-                  key={post.id}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragEnter={() => handleDragEnter(index)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(e) => e.preventDefault()}
-                  className="bg-white rounded-lg shadow-lg p-4 cursor-grab active:cursor-grabbing"
-                >
-                  <div className="flex gap-4 items-start">
-                    {/* Drag handle + order */}
-                    <div className="flex flex-col items-center gap-1 pt-1">
-                      <button
-                        onClick={() => moveQueueItem(index, 'up')}
-                        disabled={index === 0}
-                        className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                      >
-                        <ChevronUp size={16} />
-                      </button>
-                      <GripVertical className="text-gray-400" size={20} />
-                      <button
-                        onClick={() => moveQueueItem(index, 'down')}
-                        disabled={index === queuedPosts.length - 1}
-                        className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                      >
-                        <ChevronDown size={16} />
-                      </button>
-                    </div>
-
-                    {/* Thumbnail */}
-                    <img src={post.imageUrl} alt="" className="w-24 h-24 object-cover rounded-lg flex-shrink-0" />
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-1">
-                        <span className="text-xs font-bold text-gray-400">#{index + 1} in queue</span>
-                        <div className="flex gap-2">
-                          {editingPostId !== post.id && (
-                            <>
-                              <button onClick={() => startEditing(post)} className="text-blue-600 hover:text-blue-700 text-sm font-semibold">
-                                Edit
-                              </button>
-                              <button onClick={() => setShowDeleteConfirm(post.id)} className="text-red-500 hover:text-red-600">
-                                <Trash2 size={16} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {editingPostId === post.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editingCaption}
-                            onChange={(e) => setEditingCaption(e.target.value)}
-                            className="w-full border border-blue-300 rounded-lg p-2 text-sm"
-                            rows={2}
-                          />
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">Change Type</label>
-                            <div className="flex gap-2">
-                              {(['queued', 'scheduled', 'extra'] as PostType[]).map(t => (
-                                <button
-                                  key={t}
-                                  onClick={() => setEditingType(t)}
-                                  className={`px-3 py-1 rounded text-xs font-semibold ${
-                                    editingType === t ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
-                                  }`}
-                                >
-                                  {typeLabel(t)}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          {(editingType === 'scheduled' || editingType === 'extra') && (
-                            <input
-                              type="date"
-                              value={editingDate}
-                              onChange={(e) => setEditingDate(e.target.value)}
-                              className="w-full border border-blue-300 rounded px-3 py-1 text-sm"
-                            />
-                          )}
-                          <div className="flex gap-2">
-                            <button onClick={saveEdits} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-blue-700">
-                              Save
-                            </button>
-                            <button onClick={cancelEditing} className="bg-gray-200 text-gray-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-gray-300">
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Delete confirm */}
-                  {showDeleteConfirm === post.id && (
-                    <div className="mt-3 border-t pt-3 flex gap-2">
-                      <button onClick={() => deletePost(post.id)} className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700">
-                        Delete
-                      </button>
-                      <button onClick={() => setShowDeleteConfirm(null)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300">
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                <ListOrdered className="mx-auto mb-4 text-gray-400" size={64} />
-                <p className="text-gray-500 text-lg">Queue is empty!</p>
-                <p className="text-gray-400 mt-2">Upload some content to start building your queue.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ─── Scheduled Tab ────────────────────────────────────────────── */}
-        {activeTab === 'scheduled' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-lg shadow-lg p-4">
-              <h2 className="text-lg font-bold text-gray-800">Scheduled & Extra Posts</h2>
+        {/* ─── Schedule Tab (Combined Timeline) ─────────────────────────── */}
+        {activeTab === 'schedule' && (
+          <div className="space-y-0">
+            {/* Header info */}
+            <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
+              <h2 className="text-lg font-bold text-gray-800">Your Schedule</h2>
               <p className="text-sm text-gray-500">
-                Scheduled posts replace the queue for that day. Extra posts are added on top.
+                Day-by-day view of what will be posted. Reorder queued posts with the arrows.
               </p>
             </div>
 
-            {scheduledPosts.length > 0 ? (
-              scheduledPosts.map((post) => (
-                <div key={post.id} className="bg-white rounded-lg shadow-lg p-4">
-                  <div className="flex gap-4 items-start">
-                    <img src={post.imageUrl} alt="" className="w-24 h-24 object-cover rounded-lg flex-shrink-0" />
+            {projectedSchedule.length > 0 ? (
+              <div className="space-y-2">
+                {projectedSchedule.map((day) => {
+                  const allPostsForDay: { post: Post; queueIndex: number | null }[] = [];
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-1">
+                  if (day.scheduledPost) {
+                    allPostsForDay.push({ post: day.scheduledPost, queueIndex: null });
+                  }
+                  if (day.queuedPost) {
+                    allPostsForDay.push({ post: day.queuedPost, queueIndex: day.queueIndex });
+                  }
+                  for (const extra of day.extraPosts) {
+                    allPostsForDay.push({ post: extra, queueIndex: null });
+                  }
+
+                  return (
+                    <div key={day.dateStr} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                      {/* Date header */}
+                      <div className={`px-4 py-2 flex items-center justify-between border-b ${
+                        day.isEmpty ? 'bg-gray-50' : 'bg-gradient-to-r from-purple-50 to-indigo-50'
+                      }`}>
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${typeBadgeClass(post.type)}`}>
-                            {typeLabel(post.type)}
+                          <Calendar size={14} className={day.isEmpty ? 'text-gray-400' : 'text-purple-500'} />
+                          <span className={`text-sm font-bold ${day.isEmpty ? 'text-gray-400' : 'text-gray-800'}`}>
+                            {day.displayDate}
                           </span>
-                          <span className="text-sm text-gray-600">{formatDate(post.scheduledAt)}</span>
                         </div>
-                        <div className="flex gap-2">
-                          {editingPostId !== post.id && (
-                            <>
-                              <button onClick={() => startEditing(post)} className="text-blue-600 hover:text-blue-700 text-sm font-semibold">
-                                Edit
-                              </button>
-                              <button onClick={() => setShowDeleteConfirm(post.id)} className="text-red-500 hover:text-red-600">
-                                <Trash2 size={16} />
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        {day.isEmpty && (
+                          <span className="text-xs text-gray-400 italic">No content — queue empty</span>
+                        )}
+                        {!day.isPostingDay && !day.isEmpty && (
+                          <span className="text-xs text-gray-400">Not a regular posting day</span>
+                        )}
                       </div>
 
-                      {editingPostId === post.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editingCaption}
-                            onChange={(e) => setEditingCaption(e.target.value)}
-                            className="w-full border border-blue-300 rounded-lg p-2 text-sm"
-                            rows={2}
-                          />
-                          <div className="flex gap-2">
-                            {(['scheduled', 'extra'] as PostType[]).map(t => (
-                              <button
-                                key={t}
-                                onClick={() => setEditingType(t)}
-                                className={`px-3 py-1 rounded text-xs font-semibold ${
-                                  editingType === t ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
-                                }`}
-                              >
-                                {typeLabel(t)}
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="date"
-                            value={editingDate}
-                            onChange={(e) => setEditingDate(e.target.value)}
-                            className="w-full border border-blue-300 rounded px-3 py-1 text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <button onClick={saveEdits} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-blue-700">
-                              Save
-                            </button>
-                            <button onClick={cancelEditing} className="bg-gray-200 text-gray-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-gray-300">
-                              Cancel
-                            </button>
-                          </div>
+                      {/* Posts for this day */}
+                      {allPostsForDay.length > 0 && (
+                        <div className="p-4 space-y-3">
+                          {allPostsForDay.map(({ post, queueIndex }) => (
+                            <div key={post.id}>
+                              {renderPostCard(post, queueIndex)}
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
                       )}
                     </div>
-                  </div>
-
-                  {showDeleteConfirm === post.id && (
-                    <div className="mt-3 border-t pt-3 flex gap-2">
-                      <button onClick={() => deletePost(post.id)} className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700">
-                        Delete
-                      </button>
-                      <button onClick={() => setShowDeleteConfirm(null)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300">
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
+                  );
+                })}
+              </div>
             ) : (
               <div className="bg-white rounded-lg shadow-lg p-12 text-center">
                 <Calendar className="mx-auto mb-4 text-gray-400" size={64} />
-                <p className="text-gray-500 text-lg">No scheduled posts</p>
-                <p className="text-gray-400 mt-2">Upload content and set it as Scheduled or Extra to pin it to a date.</p>
+                <p className="text-gray-500 text-lg">Nothing scheduled</p>
+                <p className="text-gray-400 mt-2">Upload some content to start building your schedule.</p>
               </div>
             )}
           </div>
@@ -832,12 +833,15 @@ export default function SocialScheduler() {
                           {post.status === 'published' ? '✓ Published' : '✗ Failed'}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {post.publishedAt ? formatDate(post.publishedAt) : formatDate(post.createdAt)}
+                          {post.publishedAt
+                            ? new Date(post.publishedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                            : new Date(post.createdAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                          }
                         </span>
                       </div>
                       <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
                       {post.error && (
-                        <p className="text-xs text-red-600 mt-1">Error: {post.error}</p>
+                        <p className="text-xs text-red-600 mt-1 line-clamp-1">Error: {post.error}</p>
                       )}
                     </div>
                   </div>
@@ -855,4 +859,43 @@ export default function SocialScheduler() {
       </div>
     </div>
   );
+}
+
+// ─── Utility Functions ─────────────────────────────────────────────────────
+
+function toDateStr(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatDateDisplay(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function checkIsPostingDay(date: Date, frequency: string): boolean {
+  const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, ...
+
+  switch (frequency) {
+    case 'daily':
+      return true;
+
+    case 'every-other-day': {
+      // Use epoch day count — post on even days
+      const epoch = Math.floor(date.getTime() / (1000 * 60 * 60 * 24));
+      return epoch % 2 === 0;
+    }
+
+    case '3x-week':
+      // Mon, Wed, Fri
+      return dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5;
+
+    case 'weekdays':
+      return dayOfWeek >= 1 && dayOfWeek <= 5;
+
+    default:
+      return true;
+  }
 }
