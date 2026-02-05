@@ -118,7 +118,7 @@ export default function SocialScheduler() {
 
   const projectedSchedule = useMemo((): ScheduleDay[] => {
     const days: ScheduleDay[] = [];
-    const queue = [...queuedPosts]; // clone so we can shift from it
+    const queue = [...queuedPosts];
     let queuePointer = 0;
 
     // Build lookup maps for scheduled & extra posts by date string
@@ -139,15 +139,14 @@ export default function SocialScheduler() {
       }
     }
 
-    // Find the furthest date we need to project to
-    const allDates = scheduledPosts
-      .filter(p => p.scheduledAt)
-      .map(p => new Date(p.scheduledAt!));
-
-    // Project enough days to place all queued posts + cover all scheduled dates + a buffer
-    const totalPostsToPlace = queue.length;
-    // Minimum 30 days, or enough to fit everything
-    const minDays = Math.max(30, totalPostsToPlace * 7, 14);
+    // Find the latest scheduled/extra date so we know how far to project
+    let latestScheduledDate: Date | null = null;
+    for (const post of scheduledPosts) {
+      if (post.scheduledAt) {
+        const d = new Date(post.scheduledAt);
+        if (!latestScheduledDate || d > latestScheduledDate) latestScheduledDate = d;
+      }
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -156,9 +155,9 @@ export default function SocialScheduler() {
     cursor.setDate(cursor.getDate() + 1); // Start from tomorrow
 
     let daysProjected = 0;
-    let queuedPlaced = 0;
 
-    while (daysProjected < minDays || queuedPlaced < totalPostsToPlace) {
+    // Project until we've placed all queued posts AND passed the latest scheduled date
+    while (daysProjected < 365) {
       const dateStr = toDateStr(cursor);
       const isPostingDay = checkIsPostingDay(cursor, settings.postingFrequency);
 
@@ -167,7 +166,6 @@ export default function SocialScheduler() {
       const hasScheduled = scheduledForDay.length > 0;
       const hasExtra = extraForDay.length > 0;
 
-      // Only show this day if it's a posting day OR has scheduled/extra posts
       if (isPostingDay || hasScheduled || hasExtra) {
         let queuedPost: Post | null = null;
         let queueIndex: number | null = null;
@@ -177,7 +175,6 @@ export default function SocialScheduler() {
           queuedPost = queue[queuePointer];
           queueIndex = queuePointer;
           queuePointer++;
-          queuedPlaced++;
         }
 
         const isEmpty = !hasScheduled && !hasExtra && !queuedPost;
@@ -187,7 +184,7 @@ export default function SocialScheduler() {
           dateStr,
           displayDate: formatDateDisplay(cursor),
           isPostingDay,
-          scheduledPost: scheduledForDay[0] || null, // Primary scheduled post
+          scheduledPost: scheduledForDay[0] || null,
           extraPosts: [...(scheduledForDay.length > 1 ? scheduledForDay.slice(1) : []), ...extraForDay],
           queuedPost,
           queueIndex,
@@ -195,13 +192,18 @@ export default function SocialScheduler() {
         });
       }
 
-      // Also handle non-posting days that have scheduled/extra (already covered above)
-
       cursor.setDate(cursor.getDate() + 1);
       daysProjected++;
 
-      // Safety cap
-      if (daysProjected > 365) break;
+      // Stop once we've placed all queued posts AND passed the latest scheduled date
+      const allQueuePlaced = queuePointer >= queue.length;
+      const pastLastScheduled = !latestScheduledDate || cursor > latestScheduledDate;
+      if (allQueuePlaced && pastLastScheduled) break;
+    }
+
+    // Trim trailing empty days — only show empty days between posts, not after the last one
+    while (days.length > 0 && days[days.length - 1].isEmpty) {
+      days.pop();
     }
 
     return days;
@@ -765,7 +767,13 @@ export default function SocialScheduler() {
               </p>
             </div>
 
-            {projectedSchedule.length > 0 ? (
+            {totalPending === 0 ? (
+              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+                <Calendar className="mx-auto mb-4 text-gray-400" size={64} />
+                <p className="text-gray-500 text-lg">No posts yet</p>
+                <p className="text-gray-400 mt-2">Upload some content to start building your schedule.</p>
+              </div>
+            ) : projectedSchedule.length > 0 ? (
               <div className="space-y-2">
                 {projectedSchedule.map((day) => {
                   const allPostsForDay: { post: Post; queueIndex: number | null }[] = [];
@@ -814,13 +822,7 @@ export default function SocialScheduler() {
                   );
                 })}
               </div>
-            ) : (
-              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                <Calendar className="mx-auto mb-4 text-gray-400" size={64} />
-                <p className="text-gray-500 text-lg">Nothing scheduled</p>
-                <p className="text-gray-400 mt-2">Upload some content to start building your schedule.</p>
-              </div>
-            )}
+            ) : null}
           </div>
         )}
 
