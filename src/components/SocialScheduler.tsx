@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { upload } from '@vercel/blob/client';
 import {
   Upload, Calendar, Instagram, Trash2, Settings, Clock,
   Loader2, ChevronUp, ChevronDown, Plus, History,
@@ -276,11 +277,12 @@ export default function SocialScheduler() {
 
     try {
       for (const img of images) {
-        const formData = new FormData();
-        formData.append('file', img.file);
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!uploadRes.ok) throw new Error('Failed to upload image');
-        const { url } = await uploadRes.json();
+        // Client-side upload directly to Vercel Blob (bypasses body size limit)
+        const blob = await upload(img.file.name, img.file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+        });
+        const url = blob.url;
 
         const postBody: Record<string, unknown> = {
           imageUrl: url,

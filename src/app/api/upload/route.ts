@@ -1,43 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 
-// POST /api/upload - Handle file upload
+// POST /api/upload - Handle Vercel Blob client upload token generation
+// The actual file upload goes directly from the browser to Vercel Blob,
+// bypassing the serverless function body size limit entirely.
 export async function POST(request: NextRequest) {
   try {
-    // Check for blob token
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error("BLOB_READ_WRITE_TOKEN not configured");
-      return NextResponse.json({ error: "Storage not configured" }, { status: 500 });
-    }
+    const body = (await request.json()) as HandleUploadBody;
 
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
-    // Add unique timestamp to filename to prevent collisions
-    const timestamp = Date.now();
-    const randomId = Math.random().toString(36).substring(2, 8);
-    const extension = file.name.split('.').pop() || 'jpg';
-    const uniqueFilename = `${timestamp}-${randomId}.${extension}`;
-
-    // Convert File to Buffer for Vercel Blob
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Upload to Vercel Blob
-    const blob = await put(uniqueFilename, buffer, {
-      access: "public",
-      contentType: file.type,
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname) => {
+        // Validate file type
+        return {
+          allowedContentTypes: [
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "image/heic",
+            "image/heif",
+          ],
+          maximumSizeInBytes: 20 * 1024 * 1024, // 20MB max
+        };
+      },
+      onUploadCompleted: async ({ blob }) => {
+        // Optional: could log or process after upload
+        console.log("Upload completed:", blob.url);
+      },
     });
 
-    return NextResponse.json({
-      url: blob.url,
-      uploadUrl: blob.url,
-      publicUrl: blob.url,
-    });
+    return NextResponse.json(jsonResponse);
   } catch (error) {
     console.error("Upload failed:", error);
     const message = error instanceof Error ? error.message : "Upload failed";
