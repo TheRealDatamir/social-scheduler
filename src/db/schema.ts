@@ -6,21 +6,24 @@ export const accounts = sqliteTable("accounts", {
   platform: text("platform").notNull(), // 'instagram', 'bluesky', etc.
   identifier: text("identifier").notNull(), // username or account ID
   displayName: text("display_name"),
+  postingFrequency: text("posting_frequency").notNull().default("daily"), // 'daily', 'every-other-day', 'weekdays', etc.
+  postingTime: text("posting_time").notNull().default("12:00"), // HH:MM format, 24hr
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
-// Scheduled posts
+// Posts — queued, scheduled, or extra
 export const posts = sqliteTable("posts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   accountId: integer("account_id").references(() => accounts.id),
-  imageUrl: text("image_url").notNull(), // Public URL to the image (required for Instagram)
-  caption: text("caption").notNull(), // Post caption/text
-  scheduledAt: integer("scheduled_at", { mode: "timestamp" }).notNull(),
+  imageUrl: text("image_url").notNull(),
+  caption: text("caption").notNull(),
+  type: text("type").notNull().default("queued"), // 'queued' | 'scheduled' | 'extra'
+  scheduledAt: integer("scheduled_at", { mode: "timestamp" }), // Only for scheduled/extra posts
+  queueOrder: integer("queue_order"), // Only for queued posts — manual ordering
   publishedAt: integer("published_at", { mode: "timestamp" }),
-  status: text("status").notNull().default("pending"), // 'pending', 'published', 'failed'
-  isPinned: integer("is_pinned").default(0), // 1 if manually pinned to date, 0 if auto-scheduled
-  platformPostId: text("platform_post_id"), // Media ID from Instagram after posting
-  error: text("error"), // Error message if failed
+  status: text("status").notNull().default("pending"), // 'pending' | 'published' | 'failed'
+  platformPostId: text("platform_post_id"),
+  error: text("error"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
@@ -29,3 +32,5 @@ export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
+export type PostType = "queued" | "scheduled" | "extra";
+export type PostStatus = "pending" | "published" | "failed";

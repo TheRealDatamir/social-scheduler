@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { posts } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, gt, lt, sql } from "drizzle-orm";
 import { del } from "@vercel/blob";
 
 interface RouteParams {
@@ -34,9 +34,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const postId = parseInt(id, 10);
     const body = await request.json();
 
+    // Only allow updating certain fields
+    const allowedFields: Record<string, unknown> = {};
+    if (body.caption !== undefined) allowedFields.caption = body.caption;
+    if (body.type !== undefined) allowedFields.type = body.type;
+    if (body.scheduledAt !== undefined) {
+      allowedFields.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
+    }
+    if (body.queueOrder !== undefined) allowedFields.queueOrder = body.queueOrder;
+    if (body.imageUrl !== undefined) allowedFields.imageUrl = body.imageUrl;
+
     const [updated] = await db
       .update(posts)
-      .set(body)
+      .set(allowedFields)
       .where(eq(posts.id, postId))
       .returning();
 
@@ -57,7 +67,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const postId = parseInt(id, 10);
 
-    // Get the post first to get the image URL
+    // Get the post first to get the image URL and queue info
     const [post] = await db.select().from(posts).where(eq(posts.id, postId));
 
     if (!post) {
@@ -66,6 +76,20 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // Delete from database
     await db.delete(posts).where(eq(posts.id, postId));
+
+    // If it was a queued post, reorder remaining queue items
+    if (post.type === "queued" && post.queueOrder != null) {
+      await db
+        .update(posts)
+        .set({ queueOrder: sql`${posts.queueOrder} - 1` })
+        .where(
+          and(
+            eq(posts.type, "queued"),
+            eq(posts.status, "pending"),
+            gt(posts.queueOrder, post.queueOrder)
+          )
+        );
+    }
 
     // Delete image from Vercel Blob (if it's a blob URL)
     if (post.imageUrl && post.imageUrl.includes("blob.vercel-storage.com")) {
