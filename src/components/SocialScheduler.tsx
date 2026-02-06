@@ -108,10 +108,11 @@ export default function SocialScheduler() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [queueRes, scheduledRes, historyRes, settingsRes] = await Promise.all([
+      const [queueRes, scheduledRes, publishedRes, failedRes, settingsRes] = await Promise.all([
         fetch('/api/posts?type=queued&status=pending'),
         fetch('/api/posts?type=scheduled&status=pending'),
         fetch('/api/posts?status=published'),
+        fetch('/api/posts?status=failed'),
         fetch('/api/settings'),
       ]);
 
@@ -124,7 +125,15 @@ export default function SocialScheduler() {
           return aDate - bDate;
         }));
       }
-      if (historyRes.ok) setHistoryPosts(await historyRes.json());
+      // Combine published and failed posts for history, sorted by date (newest first)
+      const published = publishedRes.ok ? await publishedRes.json() : [];
+      const failed = failedRes.ok ? await failedRes.json() : [];
+      const allHistory = [...published, ...failed].sort((a: Post, b: Post) => {
+        const aDate = a.publishedAt || a.createdAt;
+        const bDate = b.publishedAt || b.createdAt;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+      setHistoryPosts(allHistory);
       if (settingsRes.ok) setSettings(await settingsRes.json());
     } catch (error) {
       console.error('Error loading data:', error);
