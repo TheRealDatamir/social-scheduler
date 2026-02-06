@@ -44,9 +44,9 @@ async function publishPost(post: { id: number; imageUrl: string; caption: string
 // POST /api/publish - Daily publish logic (called by cron)
 //
 // Logic:
-// 1. Check for "extra" posts due today → publish all (don't consume queue)
-// 2. Check for "scheduled" posts due today → publish all (replaces queued post for the day)
-// 3. If NO scheduled posts today → pull next "queued" post from the queue (FIFO)
+// 1. Find all scheduled posts due today → publish all
+// 2. If ANY scheduled post has isExtra=false → it consumes the queue (skip queue)
+// 3. If ALL scheduled posts have isExtra=true (or no scheduled posts) → pull from queue
 // 4. If queue is empty → skip
 export async function POST(request: NextRequest) {
   // Auth check
@@ -59,25 +59,7 @@ export async function POST(request: NextRequest) {
     const { start, end } = getTodayRange();
     const results = [];
 
-    // 1. Find and publish all "extra" posts due today
-    const extraPosts = await db
-      .select()
-      .from(posts)
-      .where(
-        and(
-          eq(posts.type, "extra"),
-          eq(posts.status, "pending"),
-          lte(posts.scheduledAt, end),
-          sql`${posts.scheduledAt} >= ${start.getTime() / 1000}`
-        )
-      )
-      .orderBy(asc(posts.scheduledAt), asc(posts.createdAt));
-
-    for (const post of extraPosts) {
-      results.push(await publishPost(post));
-    }
-
-    // 2. Find scheduled posts due today
+    // 1. Find all scheduled posts due today
     const scheduledPosts = await db
       .select()
       .from(posts)
@@ -91,13 +73,16 @@ export async function POST(request: NextRequest) {
       )
       .orderBy(asc(posts.scheduledAt), asc(posts.createdAt));
 
-    if (scheduledPosts.length > 0) {
-      // Publish all scheduled posts — these replace the queued post for today
-      for (const post of scheduledPosts) {
-        results.push(await publishPost(post));
-      }
-    } else {
-      // 3. No scheduled posts today — pull from the queue
+    // Publish all scheduled posts
+    for (const post of scheduledPosts) {
+      results.push(await publishPost(post));
+    }
+
+    // 2. Check if any scheduled post consumes the queue (isExtra=false)
+    const hasQueueConsumingPost = scheduledPosts.some(post => !post.isExtra);
+
+    // 3. If no scheduled post consumed the queue, pull from queue
+    if (!hasQueueConsumingPost) {
       const [nextQueued] = await db
         .select()
         .from(posts)
@@ -115,14 +100,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const extraCount = scheduledPosts.filter(p => p.isExtra).length;
+    const regularScheduledCount = scheduledPosts.filter(p => !p.isExtra).length;
+
     return NextResponse.json({
       date: new Date().toISOString().slice(0, 10),
       dryRun: isDryRunEnabled(),
       processed: results.length,
       results,
-      extraCount: extraPosts.length,
       scheduledCount: scheduledPosts.length,
-      usedQueue: scheduledPosts.length === 0 && results.length > extraPosts.length,
+      extraCount,
+      regularScheduledCount,
+      usedQueue: !hasQueueConsumingPost && results.length > scheduledPosts.length,
     });
   } catch (error) {
     console.error("Publish cron failed:", error);

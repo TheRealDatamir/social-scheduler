@@ -9,7 +9,7 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type PostType = 'queued' | 'scheduled' | 'extra';
+type PostType = 'queued' | 'scheduled';
 type PostStatus = 'pending' | 'published' | 'failed';
 type ActiveTab = 'upload' | 'schedule' | 'history';
 
@@ -18,6 +18,7 @@ interface Post {
   imageUrl: string;
   caption: string;
   type: PostType;
+  isExtra: boolean; // For scheduled posts: if true, doesn't consume the queue
   scheduledAt: string | null;
   queueOrder: number | null;
   status: PostStatus;
@@ -38,6 +39,7 @@ interface LocalImage {
   preview: string;
   caption: string;
   type: PostType;
+  isExtra: boolean; // For scheduled posts: if true, doesn't consume the queue
   scheduledDate: string;
 }
 
@@ -48,9 +50,9 @@ interface ScheduleDay {
   displayDate: string;
   isPostingDay: boolean;
   // Posts assigned to this day
-  scheduledPost: Post | null; // replaces queue
-  extraPosts: Post[]; // additional posts
-  queuedPost: Post | null; // from queue (only if no scheduledPost)
+  scheduledPost: Post | null; // replaces queue (isExtra=false)
+  extraPosts: Post[]; // additional scheduled posts (isExtra=true)
+  queuedPost: Post | null; // from queue (only if no non-extra scheduledPost)
   queueIndex: number | null; // position in queue for reorder controls
   isEmpty: boolean;
 }
@@ -71,6 +73,7 @@ export default function SocialScheduler() {
   const [editingCaption, setEditingCaption] = useState('');
   const [editingDate, setEditingDate] = useState('');
   const [editingType, setEditingType] = useState<PostType>('queued');
+  const [editingIsExtra, setEditingIsExtra] = useState(false);
 
   const [settings, setSettings] = useState<AppSettings>({
     postingFrequency: 'daily',
@@ -85,10 +88,9 @@ export default function SocialScheduler() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [queueRes, scheduledRes, extraRes, historyRes, settingsRes] = await Promise.all([
+      const [queueRes, scheduledRes, historyRes, settingsRes] = await Promise.all([
         fetch('/api/posts?type=queued&status=pending'),
         fetch('/api/posts?type=scheduled&status=pending'),
-        fetch('/api/posts?type=extra&status=pending'),
         fetch('/api/posts?status=published'),
         fetch('/api/settings'),
       ]);
@@ -96,8 +98,7 @@ export default function SocialScheduler() {
       if (queueRes.ok) setQueuedPosts(await queueRes.json());
       if (scheduledRes.ok) {
         const scheduled = await scheduledRes.json();
-        const extra = extraRes.ok ? await extraRes.json() : [];
-        setScheduledPosts([...scheduled, ...extra].sort((a: Post, b: Post) => {
+        setScheduledPosts(scheduled.sort((a: Post, b: Post) => {
           const aDate = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0;
           const bDate = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
           return aDate - bDate;
@@ -121,25 +122,26 @@ export default function SocialScheduler() {
     const queue = [...queuedPosts];
     let queuePointer = 0;
 
-    // Build lookup maps for scheduled & extra posts by date string
-    const scheduledByDate = new Map<string, Post[]>();
-    const extraByDate = new Map<string, Post[]>();
+    // Build lookup maps for scheduled posts by date string
+    // Separate into regular (isExtra=false) and extra (isExtra=true)
+    const regularByDate = new Map<string, Post[]>(); // isExtra=false, consumes queue
+    const extraByDate = new Map<string, Post[]>(); // isExtra=true, doesn't consume queue
 
     for (const post of scheduledPosts) {
       if (!post.scheduledAt) continue;
       const dateStr = toDateStr(new Date(post.scheduledAt));
-      if (post.type === 'scheduled') {
-        const arr = scheduledByDate.get(dateStr) || [];
-        arr.push(post);
-        scheduledByDate.set(dateStr, arr);
-      } else if (post.type === 'extra') {
+      if (post.isExtra) {
         const arr = extraByDate.get(dateStr) || [];
         arr.push(post);
         extraByDate.set(dateStr, arr);
+      } else {
+        const arr = regularByDate.get(dateStr) || [];
+        arr.push(post);
+        regularByDate.set(dateStr, arr);
       }
     }
 
-    // Find the latest scheduled/extra date so we know how far to project
+    // Find the latest scheduled date so we know how far to project
     let latestScheduledDate: Date | null = null;
     for (const post of scheduledPosts) {
       if (post.scheduledAt) {
@@ -161,31 +163,31 @@ export default function SocialScheduler() {
       const dateStr = toDateStr(cursor);
       const isPostingDay = checkIsPostingDay(cursor, settings.postingFrequency);
 
-      const scheduledForDay = scheduledByDate.get(dateStr) || [];
-      const extraForDay = extraByDate.get(dateStr) || [];
-      const hasScheduled = scheduledForDay.length > 0;
+      const regularForDay = regularByDate.get(dateStr) || []; // isExtra=false
+      const extraForDay = extraByDate.get(dateStr) || []; // isExtra=true
+      const hasRegularScheduled = regularForDay.length > 0;
       const hasExtra = extraForDay.length > 0;
 
-      if (isPostingDay || hasScheduled || hasExtra) {
+      if (isPostingDay || hasRegularScheduled || hasExtra) {
         let queuedPost: Post | null = null;
         let queueIndex: number | null = null;
 
-        // If it's a posting day and no scheduled post replaces the queue, pull from queue
-        if (isPostingDay && !hasScheduled && queuePointer < queue.length) {
+        // If it's a posting day and no regular scheduled post (isExtra=false) consumes the queue, pull from queue
+        if (isPostingDay && !hasRegularScheduled && queuePointer < queue.length) {
           queuedPost = queue[queuePointer];
           queueIndex = queuePointer;
           queuePointer++;
         }
 
-        const isEmpty = !hasScheduled && !hasExtra && !queuedPost;
+        const isEmpty = !hasRegularScheduled && !hasExtra && !queuedPost;
 
         days.push({
           date: new Date(cursor),
           dateStr,
           displayDate: formatDateDisplay(cursor),
           isPostingDay,
-          scheduledPost: scheduledForDay[0] || null,
-          extraPosts: [...(scheduledForDay.length > 1 ? scheduledForDay.slice(1) : []), ...extraForDay],
+          scheduledPost: regularForDay[0] || null, // First regular scheduled post
+          extraPosts: [...(regularForDay.length > 1 ? regularForDay.slice(1) : []), ...extraForDay],
           queuedPost,
           queueIndex,
           isEmpty,
@@ -244,6 +246,7 @@ export default function SocialScheduler() {
       preview: URL.createObjectURL(file),
       caption: '',
       type: 'queued' as PostType,
+      isExtra: false,
       scheduledDate: '',
     }));
     setImages(prev => [...prev, ...newImages]);
@@ -265,8 +268,14 @@ export default function SocialScheduler() {
   function setImageType(imageId: string, type: PostType) {
     setImages(prev => prev.map(img =>
       img.id === imageId
-        ? { ...img, type, scheduledDate: type === 'queued' ? '' : img.scheduledDate }
+        ? { ...img, type, isExtra: type === 'queued' ? false : img.isExtra, scheduledDate: type === 'queued' ? '' : img.scheduledDate }
         : img
+    ));
+  }
+
+  function setImageIsExtra(imageId: string, isExtra: boolean) {
+    setImages(prev => prev.map(img =>
+      img.id === imageId ? { ...img, isExtra } : img
     ));
   }
 
@@ -278,10 +287,10 @@ export default function SocialScheduler() {
     }
 
     const needDate = images.filter(
-      img => (img.type === 'scheduled' || img.type === 'extra') && !img.scheduledDate
+      img => img.type === 'scheduled' && !img.scheduledDate
     );
     if (needDate.length > 0) {
-      alert(`Please set a date for all scheduled/extra posts. ${needDate.length} missing.`);
+      alert(`Please set a date for all scheduled posts. ${needDate.length} missing.`);
       return;
     }
 
@@ -300,9 +309,10 @@ export default function SocialScheduler() {
           imageUrl: url,
           caption: img.caption,
           type: img.type,
+          isExtra: img.type === 'scheduled' ? img.isExtra : false,
         };
 
-        if (img.type === 'scheduled' || img.type === 'extra') {
+        if (img.type === 'scheduled') {
           postBody.scheduledAt = new Date(img.scheduledDate + 'T12:00:00').toISOString();
         }
 
@@ -355,6 +365,7 @@ export default function SocialScheduler() {
     setEditingCaption(post.caption);
     setEditingDate(post.scheduledAt ? new Date(post.scheduledAt).toISOString().slice(0, 10) : '');
     setEditingType(post.type);
+    setEditingIsExtra(post.isExtra);
   }
 
   function cancelEditing() {
@@ -362,6 +373,7 @@ export default function SocialScheduler() {
     setEditingCaption('');
     setEditingDate('');
     setEditingType('queued');
+    setEditingIsExtra(false);
   }
 
   async function saveEdits() {
@@ -371,9 +383,10 @@ export default function SocialScheduler() {
       const body: Record<string, unknown> = {
         caption: editingCaption,
         type: editingType,
+        isExtra: editingType === 'scheduled' ? editingIsExtra : false,
       };
 
-      if (editingType === 'scheduled' || editingType === 'extra') {
+      if (editingType === 'scheduled') {
         body.scheduledAt = new Date(editingDate + 'T12:00:00').toISOString();
         body.queueOrder = null;
       } else {
@@ -413,28 +426,28 @@ export default function SocialScheduler() {
     { value: 'weekdays', label: 'Weekdays Only' },
   ];
 
-  function typeLabel(type: PostType): string {
-    switch (type) {
-      case 'queued': return 'From Queue';
-      case 'scheduled': return 'Scheduled';
-      case 'extra': return 'Extra';
-    }
+  function typeLabel(post: Post): string {
+    if (post.type === 'queued') return 'From Queue';
+    if (post.isExtra) return 'Scheduled (Extra)';
+    return 'Scheduled';
   }
 
-  function typeBadgeClass(type: PostType): string {
-    switch (type) {
-      case 'queued': return 'bg-blue-100 text-blue-800';
-      case 'scheduled': return 'bg-amber-100 text-amber-800';
-      case 'extra': return 'bg-emerald-100 text-emerald-800';
-    }
+  function typeBadgeClass(post: Post): string {
+    if (post.type === 'queued') return 'bg-blue-100 text-blue-800';
+    if (post.isExtra) return 'bg-emerald-100 text-emerald-800';
+    return 'bg-amber-100 text-amber-800';
   }
 
-  function uploadTypeLabel(type: PostType): string {
-    switch (type) {
-      case 'queued': return 'Queued';
-      case 'scheduled': return 'Scheduled';
-      case 'extra': return 'Extra';
-    }
+  function uploadTypeBadgeClass(type: PostType, isExtra: boolean): string {
+    if (type === 'queued') return 'bg-blue-100 text-blue-800';
+    if (isExtra) return 'bg-emerald-100 text-emerald-800';
+    return 'bg-amber-100 text-amber-800';
+  }
+
+  function uploadTypeLabel(type: PostType, isExtra: boolean): string {
+    if (type === 'queued') return 'Queued';
+    if (isExtra) return 'Scheduled (Extra)';
+    return 'Scheduled';
   }
 
   // ─── Post Card (reusable in schedule rows) ──────────────────────────────
@@ -474,8 +487,8 @@ export default function SocialScheduler() {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-0.5">
-            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${typeBadgeClass(post.type)}`}>
-              {typeLabel(post.type)}
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${typeBadgeClass(post)}`}>
+              {typeLabel(post)}
             </span>
             {!isEditing && (
               <div className="flex gap-2">
@@ -500,26 +513,40 @@ export default function SocialScheduler() {
               <div>
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Type</label>
                 <div className="flex gap-1.5">
-                  {(['queued', 'scheduled', 'extra'] as PostType[]).map(t => (
+                  {(['queued', 'scheduled'] as PostType[]).map(t => (
                     <button
                       key={t}
-                      onClick={() => setEditingType(t)}
+                      onClick={() => {
+                        setEditingType(t);
+                        if (t === 'queued') setEditingIsExtra(false);
+                      }}
                       className={`px-2.5 py-1 rounded text-xs font-semibold ${
                         editingType === t ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {uploadTypeLabel(t)}
+                      {t === 'queued' ? 'Queued' : 'Scheduled'}
                     </button>
                   ))}
                 </div>
               </div>
-              {(editingType === 'scheduled' || editingType === 'extra') && (
-                <input
-                  type="date"
-                  value={editingDate}
-                  onChange={(e) => setEditingDate(e.target.value)}
-                  className="w-full border border-blue-300 rounded px-3 py-1 text-sm"
-                />
+              {editingType === 'scheduled' && (
+                <>
+                  <input
+                    type="date"
+                    value={editingDate}
+                    onChange={(e) => setEditingDate(e.target.value)}
+                    className="w-full border border-blue-300 rounded px-3 py-1 text-sm"
+                  />
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editingIsExtra}
+                      onChange={(e) => setEditingIsExtra(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-gray-700">Extra post (doesn&apos;t replace queue)</span>
+                  </label>
+                </>
               )}
               <div className="flex gap-2">
                 <button onClick={saveEdits} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-blue-700">
@@ -573,7 +600,7 @@ export default function SocialScheduler() {
                 Social Post Scheduler
               </h1>
               <p className="text-gray-600 mt-1">
-                {queuedPosts.length} in queue · {scheduledPosts.filter(p => p.type === 'scheduled').length} scheduled · {scheduledPosts.filter(p => p.type === 'extra').length} extra · Posting {settings.postingFrequency.replace(/-/g, ' ')}
+                {queuedPosts.length} in queue · {scheduledPosts.filter(p => !p.isExtra).length} scheduled · {scheduledPosts.filter(p => p.isExtra).length} extra · Posting {settings.postingFrequency.replace(/-/g, ' ')}
               </p>
             </div>
             <button
@@ -692,15 +719,15 @@ export default function SocialScheduler() {
                         >
                           <Trash2 size={16} />
                         </button>
-                        <div className={`absolute top-2 left-2 px-3 py-1 rounded-full text-sm font-semibold ${typeBadgeClass(image.type)}`}>
-                          {uploadTypeLabel(image.type)}
+                        <div className={`absolute top-2 left-2 px-3 py-1 rounded-full text-sm font-semibold ${uploadTypeBadgeClass(image.type, image.isExtra)}`}>
+                          {uploadTypeLabel(image.type, image.isExtra)}
                         </div>
                       </div>
                       <div className="p-4 space-y-3">
                         <div>
                           <label className="text-xs font-semibold text-gray-600 block mb-1">Post Type</label>
                           <div className="flex gap-2">
-                            {(['queued', 'scheduled', 'extra'] as PostType[]).map(t => (
+                            {(['queued', 'scheduled'] as PostType[]).map(t => (
                               <button
                                 key={t}
                                 onClick={() => setImageType(image.id, t)}
@@ -710,25 +737,36 @@ export default function SocialScheduler() {
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                 }`}
                               >
-                                {uploadTypeLabel(t)}
+                                {t === 'queued' ? 'Queued' : 'Scheduled'}
                               </button>
                             ))}
                           </div>
                         </div>
 
-                        {(image.type === 'scheduled' || image.type === 'extra') && (
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 block mb-1">
-                              <Clock size={12} className="inline mr-1" />
-                              Post Date
+                        {image.type === 'scheduled' && (
+                          <>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600 block mb-1">
+                                <Clock size={12} className="inline mr-1" />
+                                Post Date
+                              </label>
+                              <input
+                                type="date"
+                                value={image.scheduledDate}
+                                onChange={(e) => updateImage(image.id, { scheduledDate: e.target.value })}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              />
+                            </div>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={image.isExtra}
+                                onChange={(e) => setImageIsExtra(image.id, e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span className="text-gray-700">Extra post (doesn&apos;t replace queue)</span>
                             </label>
-                            <input
-                              type="date"
-                              value={image.scheduledDate}
-                              onChange={(e) => updateImage(image.id, { scheduledDate: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                          </div>
+                          </>
                         )}
 
                         <div>

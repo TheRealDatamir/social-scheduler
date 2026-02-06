@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { imageUrl, caption, type = "queued", scheduledAt, queueOrder } = body;
+    const { imageUrl, caption, type = "queued", scheduledAt, queueOrder, isExtra = false } = body;
 
     if (!imageUrl || !caption) {
       return NextResponse.json(
@@ -52,17 +52,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate type
-    if (!["queued", "scheduled", "extra"].includes(type)) {
+    if (!["queued", "scheduled"].includes(type)) {
       return NextResponse.json(
-        { error: "type must be 'queued', 'scheduled', or 'extra'" },
+        { error: "type must be 'queued' or 'scheduled'" },
         { status: 400 }
       );
     }
 
-    // Scheduled and extra posts require a date
-    if ((type === "scheduled" || type === "extra") && !scheduledAt) {
+    // Scheduled posts require a date
+    if (type === "scheduled" && !scheduledAt) {
       return NextResponse.json(
-        { error: "scheduledAt is required for scheduled and extra posts" },
+        { error: "scheduledAt is required for scheduled posts" },
         { status: 400 }
       );
     }
@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         imageUrl,
         caption,
         type,
+        isExtra: type === "scheduled" ? isExtra : false, // isExtra only applies to scheduled posts
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         queueOrder: type === "queued" ? finalQueueOrder : null,
         status: "pending",

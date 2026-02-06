@@ -11,14 +11,15 @@ export const accounts = sqliteTable("accounts", {
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
-// Posts — queued, scheduled, or extra
+// Posts — queued or scheduled
 export const posts = sqliteTable("posts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   accountId: integer("account_id").references(() => accounts.id),
   imageUrl: text("image_url").notNull(),
   caption: text("caption").notNull(),
-  type: text("type").notNull().default("queued"), // 'queued' | 'scheduled' | 'extra'
-  scheduledAt: integer("scheduled_at", { mode: "timestamp" }), // Only for scheduled/extra posts
+  type: text("type").notNull().default("queued"), // 'queued' | 'scheduled'
+  isExtra: integer("is_extra", { mode: "boolean" }).notNull().default(false), // Only for scheduled: if true, doesn't consume the queue
+  scheduledAt: integer("scheduled_at", { mode: "timestamp" }), // Only for scheduled posts
   queueOrder: integer("queue_order"), // Only for queued posts — manual ordering
   publishedAt: integer("published_at", { mode: "timestamp" }),
   status: text("status").notNull().default("pending"), // 'pending' | 'published' | 'failed'
@@ -32,5 +33,5 @@ export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
-export type PostType = "queued" | "scheduled" | "extra";
+export type PostType = "queued" | "scheduled";
 export type PostStatus = "pending" | "published" | "failed";

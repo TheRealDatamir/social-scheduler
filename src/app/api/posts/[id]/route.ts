@@ -38,6 +38,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const allowedFields: Record<string, unknown> = {};
     if (body.caption !== undefined) allowedFields.caption = body.caption;
     if (body.type !== undefined) allowedFields.type = body.type;
+    if (body.isExtra !== undefined) allowedFields.isExtra = body.isExtra;
     if (body.scheduledAt !== undefined) {
       allowedFields.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
     }
