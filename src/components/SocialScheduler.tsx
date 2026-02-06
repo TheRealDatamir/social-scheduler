@@ -8,11 +8,13 @@ import {
 } from 'lucide-react';
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
+  DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -91,6 +93,7 @@ export default function SocialScheduler() {
   const [editingDate, setEditingDate] = useState('');
   const [editingType, setEditingType] = useState<PostType>('queued');
   const [editingIsExtra, setEditingIsExtra] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
 
   const [settings, setSettings] = useState<AppSettings>({
     postingFrequency: 'daily',
@@ -366,8 +369,14 @@ export default function SocialScheduler() {
     })
   );
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveDragId(event.active.id as number);
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+    
+    setActiveDragId(null); // Clear the drag state
     
     if (!over || active.id === over.id) return;
 
@@ -390,6 +399,13 @@ export default function SocialScheduler() {
       await loadData();
     }
   }
+
+  function handleDragCancel() {
+    setActiveDragId(null);
+  }
+
+  // Get the currently dragging post for the overlay
+  const activeDragPost = activeDragId ? queuedPosts.find(p => p.id === activeDragId) : null;
 
   // Legacy arrow-based reordering (still used as fallback)
   async function moveQueueItem(queueIndex: number, direction: 'up' | 'down') {
@@ -912,7 +928,9 @@ export default function SocialScheduler() {
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
               >
                 <SortableContext
                   items={queuedPosts.map(p => p.id)}
@@ -971,6 +989,27 @@ export default function SocialScheduler() {
                     })}
                   </div>
                 </SortableContext>
+
+                {/* Drag overlay - renders floating clone of dragged item */}
+                <DragOverlay>
+                  {activeDragPost ? (
+                    <div className="bg-white rounded-lg shadow-xl border-2 border-purple-400 p-3">
+                      <div className="flex gap-3 items-start">
+                        <img 
+                          src={activeDragPost.imageUrl} 
+                          alt="" 
+                          className="w-16 h-16 object-cover rounded-lg flex-shrink-0" 
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                            From Queue
+                          </span>
+                          <p className="text-sm text-gray-700 line-clamp-2 mt-1">{activeDragPost.caption}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </DragOverlay>
               </DndContext>
             ) : null}
           </div>
