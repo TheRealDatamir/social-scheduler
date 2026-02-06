@@ -502,15 +502,15 @@ export default function SocialScheduler() {
   }
 
   function typeBadgeClass(post: Post): string {
-    if (post.type === 'queued') return 'bg-blue-100 text-blue-800';
-    if (post.isExtra) return 'bg-emerald-100 text-emerald-800';
-    return 'bg-amber-100 text-amber-800';
+    if (post.type === 'queued') return 'bg-blue-500/30 text-blue-300';
+    if (post.isExtra) return 'bg-emerald-500/30 text-emerald-300';
+    return 'bg-amber-500/30 text-amber-300';
   }
 
   function uploadTypeBadgeClass(type: PostType, isExtra: boolean): string {
-    if (type === 'queued') return 'bg-blue-100 text-blue-800';
-    if (isExtra) return 'bg-emerald-100 text-emerald-800';
-    return 'bg-amber-100 text-amber-800';
+    if (type === 'queued') return 'bg-blue-500/30 text-blue-300';
+    if (isExtra) return 'bg-emerald-500/30 text-emerald-300';
+    return 'bg-amber-500/30 text-amber-300';
   }
 
   function uploadTypeLabel(type: PostType, isExtra: boolean): string {
@@ -539,7 +539,7 @@ export default function SocialScheduler() {
     };
 
     return (
-      <div ref={setNodeRef} style={style} className={isDragging ? 'bg-purple-50 rounded-lg' : ''}>
+      <div ref={setNodeRef} style={style} className={isDragging ? 'bg-purple-500/20 rounded-lg' : ''}>
         {renderPostCard(post, queueIndex, { attributes, listeners })}
       </div>
     );
@@ -565,7 +565,7 @@ export default function SocialScheduler() {
               <button
                 {...dragHandleProps.attributes}
                 {...(dragHandleProps.listeners ?? {})}
-                className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing p-1 touch-none"
+                className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing p-1 touch-none"
                 title="Drag to reorder"
               >
                 <GripVertical size={16} />
@@ -575,7 +575,7 @@ export default function SocialScheduler() {
                 <button
                   onClick={() => moveQueueItem(queueIndex, 'up')}
                   disabled={queueIndex === 0}
-                  className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
+                  className="text-gray-500 hover:text-gray-300 disabled:opacity-20 p-0.5"
                   title="Move up in queue"
                 >
                   <ChevronUp size={14} />
@@ -583,14 +583,14 @@ export default function SocialScheduler() {
                 <button
                   onClick={() => moveQueueItem(queueIndex, 'down')}
                   disabled={queueIndex === queuedPosts.length - 1}
-                  className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
+                  className="text-gray-500 hover:text-gray-300 disabled:opacity-20 p-0.5"
                   title="Move down in queue"
                 >
                   <ChevronDown size={14} />
                 </button>
               </div>
             )}
-            <span className="text-[10px] font-bold text-gray-400">#{queueIndex + 1}</span>
+            <span className="text-[10px] font-bold text-gray-500">#{queueIndex + 1}</span>
           </div>
         )}
 
@@ -605,10 +605,10 @@ export default function SocialScheduler() {
             </span>
             {!isEditing && (
               <div className="flex gap-2">
-                <button onClick={() => startEditing(post)} className="text-blue-600 hover:text-blue-700 text-xs font-semibold">
+                <button onClick={() => startEditing(post)} className="text-blue-400 hover:text-blue-300 text-xs font-semibold">
                   Edit
                 </button>
-                <button onClick={() => setShowDeleteConfirm(post.id)} className="text-red-500 hover:text-red-600">
+                <button onClick={() => setShowDeleteConfirm(post.id)} className="text-red-400 hover:text-red-300">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -620,11 +620,11 @@ export default function SocialScheduler() {
               <textarea
                 value={editingCaption}
                 onChange={(e) => setEditingCaption(e.target.value)}
-                className="w-full border border-blue-300 rounded-lg p-2 text-sm"
+                className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg p-2 text-sm"
                 rows={2}
               />
               <div>
-                <label className="text-xs font-semibold text-gray-600 block mb-1">Type</label>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Type</label>
                 <div className="flex gap-1.5">
                   {(['queued', 'scheduled'] as PostType[]).map(t => (
                     <button
@@ -634,7 +634,7 @@ export default function SocialScheduler() {
                         if (t === 'queued') setEditingIsExtra(false);
                       }}
                       className={`px-2.5 py-1 rounded text-xs font-semibold ${
-                        editingType === t ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
+                        editingType === t ? 'bg-purple-600 text-white' : 'bg-[#383a40] text-gray-300'
                       }`}
                     >
                       {t === 'queued' ? 'Queued' : 'Scheduled'}
@@ -648,38 +648,38 @@ export default function SocialScheduler() {
                     type="date"
                     value={editingDate}
                     onChange={(e) => setEditingDate(e.target.value)}
-                    className="w-full border border-blue-300 rounded px-3 py-1 text-sm"
+                    className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded px-3 py-1 text-sm"
                   />
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer text-gray-300">
                     <input
                       type="checkbox"
                       checked={editingIsExtra}
                       onChange={(e) => setEditingIsExtra(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      className="w-4 h-4 rounded border-[#4a4d55] bg-[#383a40] text-purple-600 focus:ring-purple-500"
                     />
-                    <span className="text-gray-700">Extra post (doesn&apos;t replace queue)</span>
+                    <span>Extra post (doesn&apos;t replace queue)</span>
                   </label>
                 </>
               )}
               <div className="flex gap-2">
-                <button onClick={saveEdits} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-blue-700">
+                <button onClick={saveEdits} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-blue-500">
                   Save
                 </button>
-                <button onClick={cancelEditing} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-gray-300">
+                <button onClick={cancelEditing} className="bg-[#383a40] text-gray-300 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-[#43454d]">
                   Cancel
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
+            <p className="text-sm text-gray-300 line-clamp-2">{post.caption}</p>
           )}
 
           {isDeleting && (
             <div className="mt-2 flex gap-2">
-              <button onClick={() => deletePost(post.id)} className="bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-red-700">
+              <button onClick={() => deletePost(post.id)} className="bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-red-500">
                 Confirm Delete
               </button>
-              <button onClick={() => setShowDeleteConfirm(null)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-gray-300">
+              <button onClick={() => setShowDeleteConfirm(null)} className="bg-[#383a40] text-gray-300 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-[#43454d]">
                 Cancel
               </button>
             </div>
@@ -693,32 +693,42 @@ export default function SocialScheduler() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+      <div className="min-h-screen bg-[#1e1f22] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
       </div>
     );
   }
 
   const totalPending = queuedPosts.length + scheduledPosts.length;
 
+  // Calculate days of posting coverage
+  const daysOfPosting = projectedSchedule.filter(day => !day.isEmpty).length;
+  const daysColor = daysOfPosting > 7 ? 'text-green-400' : daysOfPosting > 3 ? 'text-yellow-400' : 'text-red-400';
+  const daysBgColor = daysOfPosting > 7 ? 'bg-green-500/20' : daysOfPosting > 3 ? 'bg-yellow-500/20' : 'bg-red-500/20';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 p-4">
+    <div className="min-h-screen bg-[#1e1f22] p-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-                <Instagram className="text-purple-500" />
+              <h1 className="text-3xl font-bold text-gray-100 flex items-center gap-2">
+                <Instagram className="text-purple-400" />
                 Social Post Scheduler
               </h1>
-              <p className="text-gray-600 mt-1">
-                {queuedPosts.length} in queue · {scheduledPosts.filter(p => !p.isExtra).length} scheduled · {scheduledPosts.filter(p => p.isExtra).length} extra · Posting {settings.postingFrequency.replace(/-/g, ' ')}
-              </p>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-gray-400">
+                  {queuedPosts.length} in queue · {scheduledPosts.length} scheduled · Posting {settings.postingFrequency.replace(/-/g, ' ')}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-sm font-semibold ${daysBgColor} ${daysColor}`}>
+                  {daysOfPosting} days of content
+                </span>
+              </div>
             </div>
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-[#383a40] hover:bg-[#43454d] text-gray-200 rounded-lg transition-colors"
             >
               <Settings size={20} />
               Settings
@@ -728,15 +738,15 @@ export default function SocialScheduler() {
 
         {/* Settings Panel */}
         {showSettings && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4">Posting Settings</h2>
+          <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-100 mb-4">Posting Settings</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Posting Frequency</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Posting Frequency</label>
                 <select
                   value={settings.postingFrequency}
                   onChange={(e) => updateSettings({ postingFrequency: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg px-4 py-2"
                 >
                   {frequencyOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -744,12 +754,12 @@ export default function SocialScheduler() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Posting Time</label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Posting Time</label>
                 <input
                   type="time"
                   value={settings.postingTime}
                   onChange={(e) => updateSettings({ postingTime: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg px-4 py-2"
                 />
               </div>
             </div>
@@ -775,7 +785,7 @@ export default function SocialScheduler() {
               className={`px-5 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
                 activeTab === tab.key
                   ? 'bg-purple-600 text-white shadow-lg'
-                  : 'bg-white text-gray-600 hover:bg-gray-50'
+                  : 'bg-[#2b2d31] text-gray-300 hover:bg-[#383a40]'
               }`}
             >
               <tab.icon size={18} />
@@ -787,12 +797,12 @@ export default function SocialScheduler() {
         {/* ─── Upload Tab ───────────────────────────────────────────────── */}
         {activeTab === 'upload' && (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-8">
               <label className="block cursor-pointer">
-                <div className="border-4 border-dashed border-purple-300 rounded-lg p-12 text-center hover:border-purple-500 transition-colors bg-purple-50">
-                  <Upload className="mx-auto mb-4 text-purple-500" size={48} />
-                  <p className="text-lg font-semibold text-gray-700">Drop images here or click to upload</p>
-                  <p className="text-sm text-gray-500 mt-2">Upload content to add to your queue or schedule</p>
+                <div className="border-4 border-dashed border-purple-500/50 rounded-lg p-12 text-center hover:border-purple-400 transition-colors bg-purple-500/10">
+                  <Upload className="mx-auto mb-4 text-purple-400" size={48} />
+                  <p className="text-lg font-semibold text-gray-200">Drop images here or click to upload</p>
+                  <p className="text-sm text-gray-400 mt-2">Upload content to add to your queue or schedule</p>
                 </div>
                 <input
                   ref={uploadInputRef}
@@ -807,11 +817,11 @@ export default function SocialScheduler() {
 
             {images.length > 0 && (
               <>
-                <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6">
                   <button
                     onClick={uploadAll}
                     disabled={uploading}
-                    className="w-full bg-gradient-to-r from-green-500 to-teal-500 text-white px-6 py-3 rounded-lg font-semibold hover:from-green-600 hover:to-teal-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full bg-gradient-to-r from-green-600 to-teal-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-green-500 hover:to-teal-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {uploading ? (
                       <><Loader2 size={20} className="animate-spin" /> Uploading...</>
@@ -823,7 +833,7 @@ export default function SocialScheduler() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {images.map((image) => (
-                    <div key={image.id} className="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div key={image.id} className="bg-[#2b2d31] rounded-lg shadow-lg overflow-hidden">
                       <div className="relative">
                         <img src={image.preview} alt="Upload" className="w-full h-64 object-cover" />
                         <button
@@ -838,7 +848,7 @@ export default function SocialScheduler() {
                       </div>
                       <div className="p-4 space-y-3">
                         <div>
-                          <label className="text-xs font-semibold text-gray-600 block mb-1">Post Type</label>
+                          <label className="text-xs font-semibold text-gray-400 block mb-1">Post Type</label>
                           <div className="flex gap-2">
                             {(['queued', 'scheduled'] as PostType[]).map(t => (
                               <button
@@ -847,7 +857,7 @@ export default function SocialScheduler() {
                                 className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                                   image.type === t
                                     ? 'bg-purple-600 text-white'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    : 'bg-[#383a40] text-gray-300 hover:bg-[#43454d]'
                                 }`}
                               >
                                 {t === 'queued' ? 'Queued' : 'Scheduled'}
@@ -859,7 +869,7 @@ export default function SocialScheduler() {
                         {image.type === 'scheduled' && (
                           <>
                             <div>
-                              <label className="text-xs font-semibold text-gray-600 block mb-1">
+                              <label className="text-xs font-semibold text-gray-400 block mb-1">
                                 <Clock size={12} className="inline mr-1" />
                                 Post Date
                               </label>
@@ -867,28 +877,28 @@ export default function SocialScheduler() {
                                 type="date"
                                 value={image.scheduledDate}
                                 onChange={(e) => updateImage(image.id, { scheduledDate: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg px-3 py-2 text-sm"
                               />
                             </div>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <label className="flex items-center gap-2 text-sm cursor-pointer text-gray-300">
                               <input
                                 type="checkbox"
                                 checked={image.isExtra}
                                 onChange={(e) => setImageIsExtra(image.id, e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                className="w-4 h-4 rounded border-[#4a4d55] bg-[#383a40] text-purple-600 focus:ring-purple-500"
                               />
-                              <span className="text-gray-700">Extra post (doesn&apos;t replace queue)</span>
+                              <span>Extra post (doesn&apos;t replace queue)</span>
                             </label>
                           </>
                         )}
 
                         <div>
-                          <label className="text-xs font-semibold text-gray-600 block mb-1">Caption</label>
+                          <label className="text-xs font-semibold text-gray-400 block mb-1">Caption</label>
                           <textarea
                             value={image.caption}
                             onChange={(e) => updateImage(image.id, { caption: e.target.value })}
                             placeholder="Write a caption..."
-                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 placeholder-gray-500 rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                             rows={3}
                           />
                         </div>
@@ -900,8 +910,8 @@ export default function SocialScheduler() {
             )}
 
             {images.length === 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                <p className="text-gray-500">No images staged. Upload some content above!</p>
+              <div className="bg-[#2b2d31] rounded-lg shadow-lg p-12 text-center">
+                <p className="text-gray-400">No images staged. Upload some content above!</p>
               </div>
             )}
           </div>
@@ -911,18 +921,18 @@ export default function SocialScheduler() {
         {activeTab === 'schedule' && (
           <div className="space-y-0">
             {/* Header info */}
-            <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
-              <h2 className="text-lg font-bold text-gray-800">Your Schedule</h2>
-              <p className="text-sm text-gray-500">
-                Day-by-day view of what will be posted. Drag the <GripVertical size={14} className="inline text-gray-400" /> handle to reorder queued posts.
+            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-4 mb-4">
+              <h2 className="text-lg font-bold text-gray-100">Your Schedule</h2>
+              <p className="text-sm text-gray-400">
+                Day-by-day view of what will be posted. Drag the <GripVertical size={14} className="inline text-gray-500" /> handle to reorder queued posts.
               </p>
             </div>
 
             {totalPending === 0 ? (
-              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                <Calendar className="mx-auto mb-4 text-gray-400" size={64} />
-                <p className="text-gray-500 text-lg">No posts yet</p>
-                <p className="text-gray-400 mt-2">Upload some content to start building your schedule.</p>
+              <div className="bg-[#2b2d31] rounded-lg shadow-lg p-12 text-center">
+                <Calendar className="mx-auto mb-4 text-gray-500" size={64} />
+                <p className="text-gray-400 text-lg">No posts yet</p>
+                <p className="text-gray-500 mt-2">Upload some content to start building your schedule.</p>
               </div>
             ) : projectedSchedule.length > 0 ? (
               <DndContext
@@ -953,25 +963,25 @@ export default function SocialScheduler() {
                       return (
                         <div 
                           key={day.dateStr} 
-                          className={`bg-white rounded-lg shadow-sm border border-gray-100 ${
+                          className={`bg-[#2b2d31] rounded-lg shadow-sm border border-[#3f4147] ${
                             activeDragId ? 'overflow-visible' : 'overflow-hidden'
                           }`}
                         >
                           {/* Date header */}
-                          <div className={`px-4 py-2 flex items-center justify-between border-b ${
-                            day.isEmpty ? 'bg-gray-50' : 'bg-gradient-to-r from-purple-50 to-indigo-50'
+                          <div className={`px-4 py-2 flex items-center justify-between border-b border-[#3f4147] ${
+                            day.isEmpty ? 'bg-[#2b2d31]' : 'bg-gradient-to-r from-purple-500/20 to-indigo-500/20'
                           }`}>
                             <div className="flex items-center gap-2">
-                              <Calendar size={14} className={day.isEmpty ? 'text-gray-400' : 'text-purple-500'} />
-                              <span className={`text-sm font-bold ${day.isEmpty ? 'text-gray-400' : 'text-gray-800'}`}>
+                              <Calendar size={14} className={day.isEmpty ? 'text-gray-500' : 'text-purple-400'} />
+                              <span className={`text-sm font-bold ${day.isEmpty ? 'text-gray-500' : 'text-gray-200'}`}>
                                 {day.displayDate}
                               </span>
                             </div>
                             {day.isEmpty && (
-                              <span className="text-xs text-gray-400 italic">No content — queue empty</span>
+                              <span className="text-xs text-gray-500 italic">No content — queue empty</span>
                             )}
                             {!day.isPostingDay && !day.isEmpty && (
-                              <span className="text-xs text-gray-400">Not a regular posting day</span>
+                              <span className="text-xs text-gray-500">Not a regular posting day</span>
                             )}
                           </div>
 
@@ -998,7 +1008,7 @@ export default function SocialScheduler() {
                 {/* Drag overlay - renders floating clone of dragged item */}
                 <DragOverlay>
                   {activeDragPost ? (
-                    <div className="bg-white rounded-lg shadow-xl border-2 border-purple-400 p-3">
+                    <div className="bg-[#383a40] rounded-lg shadow-xl border-2 border-purple-400 p-3">
                       <div className="flex gap-3 items-start">
                         <img 
                           src={activeDragPost.imageUrl} 
@@ -1006,10 +1016,10 @@ export default function SocialScheduler() {
                           className="w-16 h-16 object-cover rounded-lg flex-shrink-0" 
                         />
                         <div className="flex-1 min-w-0">
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-300">
                             From Queue
                           </span>
-                          <p className="text-sm text-gray-700 line-clamp-2 mt-1">{activeDragPost.caption}</p>
+                          <p className="text-sm text-gray-300 line-clamp-2 mt-1">{activeDragPost.caption}</p>
                         </div>
                       </div>
                     </div>
@@ -1023,20 +1033,20 @@ export default function SocialScheduler() {
         {/* ─── History Tab ──────────────────────────────────────────────── */}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className="bg-white rounded-lg shadow-lg p-4">
-              <h2 className="text-lg font-bold text-gray-800">Post History</h2>
-              <p className="text-sm text-gray-500">Previously published and failed posts.</p>
+            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-4">
+              <h2 className="text-lg font-bold text-gray-100">Post History</h2>
+              <p className="text-sm text-gray-400">Previously published and failed posts.</p>
             </div>
 
             {historyPosts.length > 0 ? (
               historyPosts.map((post) => (
-                <div key={post.id} className={`bg-white rounded-lg shadow-lg p-4 ${post.status === 'failed' ? 'border-l-4 border-red-500' : 'border-l-4 border-green-500'}`}>
+                <div key={post.id} className={`bg-[#2b2d31] rounded-lg shadow-lg p-4 ${post.status === 'failed' ? 'border-l-4 border-red-500' : 'border-l-4 border-green-500'}`}>
                   <div className="flex gap-4 items-start">
                     <img src={post.imageUrl} alt="" className="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          post.status === 'published' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          post.status === 'published' ? 'bg-green-500/30 text-green-300' : 'bg-red-500/30 text-red-300'
                         }`}>
                           {post.status === 'published' ? '✓ Published' : '✗ Failed'}
                         </span>
@@ -1047,19 +1057,19 @@ export default function SocialScheduler() {
                           }
                         </span>
                       </div>
-                      <p className="text-sm text-gray-700 line-clamp-2">{post.caption}</p>
+                      <p className="text-sm text-gray-300 line-clamp-2">{post.caption}</p>
                       {post.error && (
-                        <p className="text-xs text-red-600 mt-1 line-clamp-1">Error: {post.error}</p>
+                        <p className="text-xs text-red-400 mt-1 line-clamp-1">Error: {post.error}</p>
                       )}
                     </div>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                <History className="mx-auto mb-4 text-gray-400" size={64} />
-                <p className="text-gray-500 text-lg">No history yet</p>
-                <p className="text-gray-400 mt-2">Published posts will appear here.</p>
+              <div className="bg-[#2b2d31] rounded-lg shadow-lg p-12 text-center">
+                <History className="mx-auto mb-4 text-gray-500" size={64} />
+                <p className="text-gray-400 text-lg">No history yet</p>
+                <p className="text-gray-500 mt-2">Published posts will appear here.</p>
               </div>
             )}
           </div>
