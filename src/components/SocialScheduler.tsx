@@ -534,7 +534,8 @@ export default function SocialScheduler() {
   function renderPostCard(
     post: Post, 
     queueIndex: number | null = null,
-    dragHandleProps?: { attributes: Record<string, unknown>; listeners: Record<string, unknown> }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    dragHandleProps?: { attributes: Record<string, any>; listeners: Record<string, any> | undefined }
   ) {
     const isEditing = editingPostId === post.id;
     const isDeleting = showDeleteConfirm === post.id;
@@ -547,7 +548,7 @@ export default function SocialScheduler() {
             {dragHandleProps ? (
               <button
                 {...dragHandleProps.attributes}
-                {...dragHandleProps.listeners}
+                {...(dragHandleProps.listeners ?? {})}
                 className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing p-1 touch-none"
                 title="Drag to reorder"
               >
