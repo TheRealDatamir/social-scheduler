@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { posts } from "@/db/schema";
-import { eq, and, asc, lte, sql } from "drizzle-orm";
+import { posts, socialAccounts } from "@/db/schema";
+import { eq, and, asc, lte, sql, isNotNull } from "drizzle-orm";
 import { postToInstagram, isDryRunEnabled } from "@/lib/instagram";
 
 // Helper: Get the start and end of today (UTC)
@@ -13,9 +13,17 @@ function getTodayRange(): { start: Date; end: Date } {
 }
 
 // Helper: Publish a single post
-async function publishPost(post: { id: number; imageUrl: string; caption: string }) {
+async function publishPost(
+  post: { id: number; imageUrl: string; caption: string },
+  account: { platformAccountId: string | null; accessToken: string | null }
+) {
   try {
-    const result = await postToInstagram(post.imageUrl, post.caption);
+    const result = await postToInstagram(
+      post.imageUrl, 
+      post.caption,
+      account.platformAccountId || undefined,
+      account.accessToken || undefined
+    );
 
     await db
       .update(posts)
@@ -43,7 +51,7 @@ async function publishPost(post: { id: number; imageUrl: string; caption: string
 
 // POST /api/publish - Daily publish logic (called by cron)
 //
-// Logic:
+// Logic per account:
 // 1. Find all scheduled posts due today → publish all
 // 2. If ANY scheduled post has isExtra=false → it consumes the queue (skip queue)
 // 3. If ALL scheduled posts have isExtra=true (or no scheduled posts) → pull from queue
@@ -57,61 +65,78 @@ export async function POST(request: NextRequest) {
 
   try {
     const { start, end } = getTodayRange();
-    const results = [];
+    const allResults: Array<{
+      accountId: number;
+      accountName: string | null;
+      results: Array<{ id: number; status: string; mediaId?: string; error?: string }>;
+    }> = [];
 
-    // 1. Find all scheduled posts due today
-    const scheduledPosts = await db
+    // Get all social accounts that have Instagram configured
+    const accounts = await db
       .select()
-      .from(posts)
-      .where(
-        and(
-          eq(posts.type, "scheduled"),
-          eq(posts.status, "pending"),
-          lte(posts.scheduledAt, end),
-          sql`${posts.scheduledAt} >= ${start.getTime() / 1000}`
-        )
-      )
-      .orderBy(asc(posts.scheduledAt), asc(posts.createdAt));
+      .from(socialAccounts)
+      .where(eq(socialAccounts.platform, "instagram"));
 
-    // Publish all scheduled posts
-    for (const post of scheduledPosts) {
-      results.push(await publishPost(post));
-    }
+    for (const account of accounts) {
+      const accountResults = [];
 
-    // 2. Check if any scheduled post consumes the queue (isExtra=false)
-    const hasQueueConsumingPost = scheduledPosts.some(post => !post.isExtra);
-
-    // 3. If no scheduled post consumed the queue, pull from queue
-    if (!hasQueueConsumingPost) {
-      const [nextQueued] = await db
+      // 1. Find all scheduled posts due today for this account
+      const scheduledPosts = await db
         .select()
         .from(posts)
         .where(
           and(
-            eq(posts.type, "queued"),
-            eq(posts.status, "pending")
+            eq(posts.accountId, account.id),
+            eq(posts.type, "scheduled"),
+            eq(posts.status, "pending"),
+            lte(posts.scheduledAt, end),
+            sql`${posts.scheduledAt} >= ${start.getTime() / 1000}`
           )
         )
-        .orderBy(asc(posts.queueOrder), asc(posts.createdAt))
-        .limit(1);
+        .orderBy(asc(posts.scheduledAt), asc(posts.createdAt));
 
-      if (nextQueued) {
-        results.push(await publishPost(nextQueued));
+      // Publish all scheduled posts
+      for (const post of scheduledPosts) {
+        accountResults.push(await publishPost(post, account));
+      }
+
+      // 2. Check if any scheduled post consumes the queue (isExtra=false)
+      const hasQueueConsumingPost = scheduledPosts.some(post => !post.isExtra);
+
+      // 3. If no scheduled post consumed the queue, pull from queue
+      if (!hasQueueConsumingPost) {
+        const [nextQueued] = await db
+          .select()
+          .from(posts)
+          .where(
+            and(
+              eq(posts.accountId, account.id),
+              eq(posts.type, "queued"),
+              eq(posts.status, "pending")
+            )
+          )
+          .orderBy(asc(posts.queueOrder), asc(posts.createdAt))
+          .limit(1);
+
+        if (nextQueued) {
+          accountResults.push(await publishPost(nextQueued, account));
+        }
+      }
+
+      if (accountResults.length > 0) {
+        allResults.push({
+          accountId: account.id,
+          accountName: account.displayName,
+          results: accountResults,
+        });
       }
     }
-
-    const extraCount = scheduledPosts.filter(p => p.isExtra).length;
-    const regularScheduledCount = scheduledPosts.filter(p => !p.isExtra).length;
 
     return NextResponse.json({
       date: new Date().toISOString().slice(0, 10),
       dryRun: isDryRunEnabled(),
-      processed: results.length,
-      results,
-      scheduledCount: scheduledPosts.length,
-      extraCount,
-      regularScheduledCount,
-      usedQueue: !hasQueueConsumingPost && results.length > scheduledPosts.length,
+      accountsProcessed: allResults.length,
+      results: allResults,
     });
   } catch (error) {
     console.error("Publish cron failed:", error);

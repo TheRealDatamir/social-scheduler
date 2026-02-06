@@ -8,6 +8,13 @@
       "when": 1770318233745,
       "tag": "0000_amused_tenebrous",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1738881600000,
+      "tag": "0001_auth_migration",
+      "breakpoints": true
     }
   ]
 }

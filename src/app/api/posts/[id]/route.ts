@@ -1,21 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { posts } from "@/db/schema";
-import { eq, and, gt, lt, sql } from "drizzle-orm";
+import { posts, socialAccounts } from "@/db/schema";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { del } from "@vercel/blob";
+import { auth } from "@/lib/auth";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+// Helper to verify post belongs to user
+async function verifyPostOwnership(postId: number, userId: string) {
+  const [post] = await db
+    .select({ 
+      post: posts, 
+      accountUserId: socialAccounts.userId 
+    })
+    .from(posts)
+    .leftJoin(socialAccounts, eq(posts.accountId, socialAccounts.id))
+    .where(eq(posts.id, postId));
+
+  if (!post) return null;
+  if (post.accountUserId !== userId) return null;
+  return post.post;
+}
+
 // GET /api/posts/[id] - Get a single post
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const postId = parseInt(id, 10);
 
-    const [post] = await db.select().from(posts).where(eq(posts.id, postId));
-
+    const post = await verifyPostOwnership(postId, session.user.id);
     if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
@@ -30,8 +51,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PATCH /api/posts/[id] - Update a post
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const postId = parseInt(id, 10);
+
+    // Verify ownership
+    const post = await verifyPostOwnership(postId, session.user.id);
+    if (!post) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
     const body = await request.json();
 
     // Only allow updating certain fields
@@ -51,10 +84,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .where(eq(posts.id, postId))
       .returning();
 
-    if (!updated) {
-      return NextResponse.json({ error: "Post not found" }, { status: 404 });
-    }
-
     return NextResponse.json(updated);
   } catch (error) {
     console.error("Failed to update post:", error);
@@ -65,12 +94,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 // DELETE /api/posts/[id] - Delete a post and its image
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const postId = parseInt(id, 10);
 
-    // Get the post first to get the image URL and queue info
-    const [post] = await db.select().from(posts).where(eq(posts.id, postId));
-
+    // Verify ownership
+    const post = await verifyPostOwnership(postId, session.user.id);
     if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
@@ -79,12 +112,13 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     await db.delete(posts).where(eq(posts.id, postId));
 
     // If it was a queued post, reorder remaining queue items
-    if (post.type === "queued" && post.queueOrder != null) {
+    if (post.type === "queued" && post.queueOrder != null && post.accountId != null) {
       await db
         .update(posts)
         .set({ queueOrder: sql`${posts.queueOrder} - 1` })
         .where(
           and(
+            eq(posts.accountId, post.accountId),
             eq(posts.type, "queued"),
             eq(posts.status, "pending"),
             gt(posts.queueOrder, post.queueOrder)

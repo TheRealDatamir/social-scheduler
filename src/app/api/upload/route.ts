@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { auth } from "@/lib/auth";
 
 // POST /api/upload - Handle Vercel Blob client upload token generation
 // The actual file upload goes directly from the browser to Vercel Blob,
 // bypassing the serverless function body size limit entirely.
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await request.json()) as HandleUploadBody;
 
     const jsonResponse = await handleUpload({

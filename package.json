@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@atproto/api": "^0.18.17",
+    "@auth/drizzle-adapter": "^1.11.1",
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.975.0",
     "@dnd-kit/core": "^6.3.1",
@@ -21,6 +22,7 @@
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.563.0",
     "next": "16.1.4",
+    "next-auth": "5.0.0-beta.30",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

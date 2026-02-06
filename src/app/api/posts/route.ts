@@ -1,35 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { posts } from "@/db/schema";
+import { posts, socialAccounts } from "@/db/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
+import { auth } from "@/lib/auth";
+
+// Helper to get or create user's social account
+async function getUserAccount(userId: string) {
+  const [account] = await db
+    .select()
+    .from(socialAccounts)
+    .where(eq(socialAccounts.userId, userId));
+
+  if (account) return account;
+
+  // Create default account for user
+  const [newAccount] = await db
+    .insert(socialAccounts)
+    .values({
+      userId,
+      platform: "instagram",
+      identifier: "pending",
+      displayName: "My Account",
+    })
+    .returning();
+
+  return newAccount;
+}
 
 // GET /api/posts - List posts, filterable by status and type
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const account = await getUserAccount(session.user.id);
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status"); // 'pending', 'published', 'failed'
     const type = searchParams.get("type"); // 'queued', 'scheduled', 'extra'
 
-    let query = db.select().from(posts);
-
-    const conditions = [];
+    const conditions = [eq(posts.accountId, account.id)];
     if (status) conditions.push(eq(posts.status, status));
     if (type) conditions.push(eq(posts.type, type));
 
-    let result;
-    if (conditions.length > 0) {
-      result = await query.where(and(...conditions)).orderBy(
+    const result = await db
+      .select()
+      .from(posts)
+      .where(and(...conditions))
+      .orderBy(
         asc(posts.queueOrder),
         asc(posts.scheduledAt),
         asc(posts.createdAt)
       );
-    } else {
-      result = await query.orderBy(
-        asc(posts.queueOrder),
-        asc(posts.scheduledAt),
-        asc(posts.createdAt)
-      );
-    }
 
     return NextResponse.json(result);
   } catch (error) {
@@ -41,6 +65,13 @@ export async function GET(request: NextRequest) {
 // POST /api/posts - Create a new post
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const account = await getUserAccount(session.user.id);
+
     const body = await request.json();
     const { imageUrl, caption, type = "queued", scheduledAt, queueOrder, isExtra = false } = body;
 
@@ -70,11 +101,15 @@ export async function POST(request: NextRequest) {
     // For queued posts, auto-assign queueOrder if not provided
     let finalQueueOrder = queueOrder;
     if (type === "queued" && finalQueueOrder == null) {
-      // Get the current max queueOrder
+      // Get the current max queueOrder for this account
       const maxOrderResult = await db
         .select({ queueOrder: posts.queueOrder })
         .from(posts)
-        .where(and(eq(posts.type, "queued"), eq(posts.status, "pending")))
+        .where(and(
+          eq(posts.accountId, account.id),
+          eq(posts.type, "queued"),
+          eq(posts.status, "pending")
+        ))
         .orderBy(desc(posts.queueOrder))
         .limit(1);
 
@@ -84,10 +119,11 @@ export async function POST(request: NextRequest) {
     const [newPost] = await db
       .insert(posts)
       .values({
+        accountId: account.id,
         imageUrl,
         caption,
         type,
-        isExtra: type === "scheduled" ? isExtra : false, // isExtra only applies to scheduled posts
+        isExtra: type === "scheduled" ? isExtra : false,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         queueOrder: type === "queued" ? finalQueueOrder : null,
         status: "pending",

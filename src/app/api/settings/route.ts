@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { accounts } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { socialAccounts } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { auth } from "@/lib/auth";
 
-// For now, we work with a single default account (id=1)
-// This can be expanded to multi-account later
-const DEFAULT_ACCOUNT_ID = 1;
-
-// GET /api/settings - Get posting settings from the account
+// GET /api/settings - Get posting settings from the user's account
 export async function GET() {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const [account] = await db
       .select()
-      .from(accounts)
-      .where(eq(accounts.id, DEFAULT_ACCOUNT_ID));
+      .from(socialAccounts)
+      .where(eq(socialAccounts.userId, session.user.id));
 
     if (!account) {
       // Return defaults if no account exists yet
@@ -21,13 +23,16 @@ export async function GET() {
         postingFrequency: "daily",
         postingTime: "12:00",
         timezone: "America/New_York",
+        hasInstagramConnected: false,
       });
     }
 
     return NextResponse.json({
       postingFrequency: account.postingFrequency,
       postingTime: account.postingTime,
-      timezone: "America/New_York", // Could be added to accounts table later
+      timezone: "America/New_York",
+      hasInstagramConnected: !!account.platformAccountId,
+      instagramUsername: account.identifier,
     });
   } catch (error) {
     console.error("Failed to fetch settings:", error);
@@ -35,6 +40,7 @@ export async function GET() {
       postingFrequency: "daily",
       postingTime: "12:00",
       timezone: "America/New_York",
+      hasInstagramConnected: false,
     });
   }
 }
@@ -42,38 +48,48 @@ export async function GET() {
 // PATCH /api/settings - Update posting settings
 export async function PATCH(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const updates: Record<string, unknown> = {};
 
     if (body.postingFrequency) updates.postingFrequency = body.postingFrequency;
     if (body.postingTime) updates.postingTime = body.postingTime;
 
-    // Check if account exists
+    // Check if account exists for this user
     const [existing] = await db
       .select()
-      .from(accounts)
-      .where(eq(accounts.id, DEFAULT_ACCOUNT_ID));
+      .from(socialAccounts)
+      .where(eq(socialAccounts.userId, session.user.id));
 
     if (existing) {
       const [updated] = await db
-        .update(accounts)
+        .update(socialAccounts)
         .set(updates)
-        .where(eq(accounts.id, DEFAULT_ACCOUNT_ID))
+        .where(and(
+          eq(socialAccounts.id, existing.id),
+          eq(socialAccounts.userId, session.user.id)
+        ))
         .returning();
 
       return NextResponse.json({
         postingFrequency: updated.postingFrequency,
         postingTime: updated.postingTime,
         timezone: "America/New_York",
+        hasInstagramConnected: !!updated.platformAccountId,
       });
     } else {
-      // Create the default account
+      // Create a new account for this user
       const [created] = await db
-        .insert(accounts)
+        .insert(socialAccounts)
         .values({
+          userId: session.user.id,
           platform: "instagram",
-          identifier: "default",
-          displayName: "Default Account",
+          identifier: "pending", // Will be updated when Instagram is connected
+          displayName: session.user.name || "My Account",
           postingFrequency: body.postingFrequency || "daily",
           postingTime: body.postingTime || "12:00",
         })
@@ -83,6 +99,7 @@ export async function PATCH(request: NextRequest) {
         postingFrequency: created.postingFrequency,
         postingTime: created.postingTime,
         timezone: "America/New_York",
+        hasInstagramConnected: false,
       });
     }
   } catch (error) {
