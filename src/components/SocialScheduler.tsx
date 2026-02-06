@@ -580,7 +580,7 @@ export default function SocialScheduler() {
     const showQueueControls = post.type === 'queued' && queueIndex !== null && !isEditing;
 
     return (
-      <div key={post.id} className="flex gap-3 items-start max-w-2xl">
+      <div key={post.id} className="flex gap-3 items-start">
         {/* Queue drag handle + position OR spacer for alignment */}
         {showQueueControls ? (
           <div className="flex flex-col items-center gap-0.5 pt-1 flex-shrink-0 w-6">
@@ -1027,7 +1027,7 @@ export default function SocialScheduler() {
                       return (
                         <div 
                           key={day.dateStr} 
-                          className={`bg-[#2b2d31] rounded-lg shadow-sm border border-[#3f4147] max-w-2xl ${
+                          className={`bg-[#2b2d31] rounded-lg shadow-sm border border-[#3f4147] ${
                             activeDragId ? 'overflow-visible' : 'overflow-hidden'
                           }`}
                         >
