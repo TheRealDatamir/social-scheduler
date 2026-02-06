@@ -258,6 +258,7 @@ export default function SocialScheduler() {
   // ─── Upload Handling ─────────────────────────────────────────────────────
 
   const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — Instagram's limit
+  const MAX_CAPTION_LENGTH = 2200; // Instagram's caption character limit
 
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
@@ -312,6 +313,12 @@ export default function SocialScheduler() {
     const missingCaptions = images.filter(img => !img.caption.trim());
     if (missingCaptions.length > 0) {
       alert(`Please add captions to all images. ${missingCaptions.length} missing.`);
+      return;
+    }
+
+    const tooLongCaptions = images.filter(img => img.caption.length > MAX_CAPTION_LENGTH);
+    if (tooLongCaptions.length > 0) {
+      alert(`${tooLongCaptions.length} caption(s) exceed Instagram's ${MAX_CAPTION_LENGTH} character limit. Please shorten them.`);
       return;
     }
 
@@ -456,6 +463,11 @@ export default function SocialScheduler() {
 
   async function saveEdits() {
     if (!editingPostId) return;
+
+    if (editingCaption.length > MAX_CAPTION_LENGTH) {
+      alert(`Caption exceeds Instagram's ${MAX_CAPTION_LENGTH} character limit. Please shorten it.`);
+      return;
+    }
 
     try {
       const body: Record<string, unknown> = {
@@ -626,12 +638,28 @@ export default function SocialScheduler() {
 
           {isEditing ? (
             <div className="space-y-2 mt-1">
-              <textarea
-                value={editingCaption}
-                onChange={(e) => setEditingCaption(e.target.value)}
-                className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg p-2 text-sm"
-                rows={2}
-              />
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs text-gray-400">Caption</span>
+                  <span className={`text-xs ${
+                    editingCaption.length > MAX_CAPTION_LENGTH 
+                      ? 'text-red-400 font-semibold' 
+                      : 'text-gray-500'
+                  }`}>
+                    {editingCaption.length}/{MAX_CAPTION_LENGTH}
+                  </span>
+                </div>
+                <textarea
+                  value={editingCaption}
+                  onChange={(e) => setEditingCaption(e.target.value)}
+                  className={`w-full bg-[#383a40] border text-gray-200 rounded-lg p-2 text-sm ${
+                    editingCaption.length > MAX_CAPTION_LENGTH
+                      ? 'border-red-500'
+                      : 'border-[#4a4d55]'
+                  }`}
+                  rows={2}
+                />
+              </div>
               <div>
                 <label className="text-xs font-semibold text-gray-400 block mb-1">Type</label>
                 <div className="flex gap-1.5">
@@ -902,14 +930,34 @@ export default function SocialScheduler() {
                         )}
 
                         <div>
-                          <label className="text-xs font-semibold text-gray-400 block mb-1">Caption</label>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-semibold text-gray-400">Caption</label>
+                            <span className={`text-xs ${
+                              image.caption.length > MAX_CAPTION_LENGTH 
+                                ? 'text-red-400 font-semibold' 
+                                : image.caption.length > MAX_CAPTION_LENGTH - 200
+                                  ? 'text-yellow-400'
+                                  : 'text-gray-500'
+                            }`}>
+                              {image.caption.length}/{MAX_CAPTION_LENGTH}
+                            </span>
+                          </div>
                           <textarea
                             value={image.caption}
                             onChange={(e) => updateImage(image.id, { caption: e.target.value })}
                             placeholder="Write a caption..."
-                            className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 placeholder-gray-500 rounded-lg p-3 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            className={`w-full bg-[#383a40] border text-gray-200 placeholder-gray-500 rounded-lg p-3 text-sm focus:ring-2 focus:border-transparent ${
+                              image.caption.length > MAX_CAPTION_LENGTH
+                                ? 'border-red-500 focus:ring-red-500'
+                                : 'border-[#4a4d55] focus:ring-purple-500'
+                            }`}
                             rows={3}
                           />
+                          {image.caption.length > MAX_CAPTION_LENGTH && (
+                            <p className="text-xs text-red-400 mt-1">
+                              Caption is {image.caption.length - MAX_CAPTION_LENGTH} characters over the limit
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

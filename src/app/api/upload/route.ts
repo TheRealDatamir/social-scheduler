@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
             "image/heif",
           ],
           maximumSizeInBytes: 8 * 1024 * 1024, // 8MB — matches Instagram's limit
+          addRandomSuffix: true, // Prevent duplicate filename errors
         };
       },
       onUploadCompleted: async ({ blob }) => {
