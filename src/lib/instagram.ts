@@ -8,9 +8,23 @@ interface PublishResponse {
   id: string;
 }
 
-// Check if we're in dry-run mode (for testing without Instagram credentials)
+// Check if Instagram credentials are configured
+function hasInstagramCredentials(): boolean {
+  const accountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+  const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+  return !!(accountId && accessToken && accountId.trim() && accessToken.trim());
+}
+
+// Check if we're in dry-run mode
+// Auto-enables when Instagram credentials are missing
+// Can also be forced with DRY_RUN=true or disabled with DRY_RUN=false
 function isDryRun(): boolean {
-  return process.env.DRY_RUN === "true";
+  // Explicit override takes precedence
+  if (process.env.DRY_RUN === "true") return true;
+  if (process.env.DRY_RUN === "false") return false;
+  
+  // Auto-detect: if no credentials, use dry-run mode
+  return !hasInstagramCredentials();
 }
 
 // Create a media container (step 1 of posting)
