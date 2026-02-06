@@ -577,11 +577,13 @@ export default function SocialScheduler() {
     const isEditing = editingPostId === post.id;
     const isDeleting = showDeleteConfirm === post.id;
 
+    const showQueueControls = post.type === 'queued' && queueIndex !== null && !isEditing;
+
     return (
-      <div key={post.id} className="flex gap-3 items-start">
-        {/* Queue drag handle + position */}
-        {post.type === 'queued' && queueIndex !== null && !isEditing && (
-          <div className="flex flex-col items-center gap-0.5 pt-1 flex-shrink-0">
+      <div key={post.id} className="flex gap-3 items-start max-w-2xl">
+        {/* Queue drag handle + position OR spacer for alignment */}
+        {showQueueControls ? (
+          <div className="flex flex-col items-center gap-0.5 pt-1 flex-shrink-0 w-6">
             {dragHandleProps ? (
               <button
                 {...dragHandleProps.attributes}
@@ -612,6 +614,11 @@ export default function SocialScheduler() {
               </div>
             )}
             <span className="text-[10px] font-bold text-gray-500">#{queueIndex + 1}</span>
+          </div>
+        ) : (
+          /* Spacer for non-queued posts to maintain alignment */
+          <div className="flex flex-col items-center pt-1 flex-shrink-0 w-6">
+            <div className="text-gray-600 opacity-50">║</div>
           </div>
         )}
 
