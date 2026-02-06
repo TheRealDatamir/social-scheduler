@@ -936,7 +936,7 @@ export default function SocialScheduler() {
                   items={queuedPosts.map(p => p.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <div className="space-y-2">
+                  <div className={`space-y-2 ${activeDragId ? 'overflow-visible' : ''}`}>
                     {projectedSchedule.map((day) => {
                       const allPostsForDay: { post: Post; queueIndex: number | null }[] = [];
 
@@ -951,7 +951,12 @@ export default function SocialScheduler() {
                       }
 
                       return (
-                        <div key={day.dateStr} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                        <div 
+                          key={day.dateStr} 
+                          className={`bg-white rounded-lg shadow-sm border border-gray-100 ${
+                            activeDragId ? 'overflow-visible' : 'overflow-hidden'
+                          }`}
+                        >
                           {/* Date header */}
                           <div className={`px-4 py-2 flex items-center justify-between border-b ${
                             day.isEmpty ? 'bg-gray-50' : 'bg-gradient-to-r from-purple-50 to-indigo-50'
@@ -972,7 +977,7 @@ export default function SocialScheduler() {
 
                           {/* Posts for this day */}
                           {allPostsForDay.length > 0 && (
-                            <div className="p-4 space-y-3">
+                            <div className={`p-4 space-y-3 ${activeDragId ? 'overflow-visible' : ''}`}>
                               {allPostsForDay.map(({ post, queueIndex }) => (
                                 post.type === 'queued' && queueIndex !== null ? (
                                   <SortableQueueItem key={post.id} post={post} queueIndex={queueIndex} />
