@@ -4,8 +4,25 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { upload } from '@vercel/blob/client';
 import {
   Upload, Calendar, Instagram, Trash2, Settings, Clock,
-  Loader2, ChevronUp, ChevronDown, Plus, History,
+  Loader2, ChevronUp, ChevronDown, Plus, History, GripVertical,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -336,14 +353,50 @@ export default function SocialScheduler() {
     }
   }
 
-  // ─── Queue Reordering ───────────────────────────────────────────────────
+  // ─── Queue Reordering (Drag & Drop) ──────────────────────────────────────
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px of movement before starting drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = queuedPosts.findIndex(p => p.id === active.id);
+    const newIndex = queuedPosts.findIndex(p => p.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(queuedPosts, oldIndex, newIndex);
+    setQueuedPosts(reordered);
+
+    try {
+      await fetch('/api/posts/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedIds: reordered.map(p => p.id) }),
+      });
+    } catch (error) {
+      console.error('Error reordering:', error);
+      await loadData();
+    }
+  }
+
+  // Legacy arrow-based reordering (still used as fallback)
   async function moveQueueItem(queueIndex: number, direction: 'up' | 'down') {
     const newIndex = direction === 'up' ? queueIndex - 1 : queueIndex + 1;
     if (newIndex < 0 || newIndex >= queuedPosts.length) return;
 
-    const reordered = [...queuedPosts];
-    [reordered[queueIndex], reordered[newIndex]] = [reordered[newIndex], reordered[queueIndex]];
+    const reordered = arrayMove(queuedPosts, queueIndex, newIndex);
     setQueuedPosts(reordered);
 
     try {
@@ -450,34 +503,77 @@ export default function SocialScheduler() {
     return 'Scheduled';
   }
 
+  // ─── Sortable Queue Item (for drag & drop reordering) ───────────────────
+
+  function SortableQueueItem({ post, queueIndex }: { post: Post; queueIndex: number }) {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: post.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+      zIndex: isDragging ? 1000 : 'auto',
+    };
+
+    return (
+      <div ref={setNodeRef} style={style} className={isDragging ? 'bg-purple-50 rounded-lg' : ''}>
+        {renderPostCard(post, queueIndex, { attributes, listeners })}
+      </div>
+    );
+  }
+
   // ─── Post Card (reusable in schedule rows) ──────────────────────────────
 
-  function renderPostCard(post: Post, queueIndex: number | null = null) {
+  function renderPostCard(
+    post: Post, 
+    queueIndex: number | null = null,
+    dragHandleProps?: { attributes: Record<string, unknown>; listeners: Record<string, unknown> }
+  ) {
     const isEditing = editingPostId === post.id;
     const isDeleting = showDeleteConfirm === post.id;
 
     return (
       <div key={post.id} className="flex gap-3 items-start">
-        {/* Queue reorder controls */}
+        {/* Queue drag handle + position */}
         {post.type === 'queued' && queueIndex !== null && !isEditing && (
           <div className="flex flex-col items-center gap-0.5 pt-1 flex-shrink-0">
-            <button
-              onClick={() => moveQueueItem(queueIndex, 'up')}
-              disabled={queueIndex === 0}
-              className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
-              title="Move up in queue"
-            >
-              <ChevronUp size={14} />
-            </button>
+            {dragHandleProps ? (
+              <button
+                {...dragHandleProps.attributes}
+                {...dragHandleProps.listeners}
+                className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing p-1 touch-none"
+                title="Drag to reorder"
+              >
+                <GripVertical size={16} />
+              </button>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={() => moveQueueItem(queueIndex, 'up')}
+                  disabled={queueIndex === 0}
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
+                  title="Move up in queue"
+                >
+                  <ChevronUp size={14} />
+                </button>
+                <button
+                  onClick={() => moveQueueItem(queueIndex, 'down')}
+                  disabled={queueIndex === queuedPosts.length - 1}
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
+                  title="Move down in queue"
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+            )}
             <span className="text-[10px] font-bold text-gray-400">#{queueIndex + 1}</span>
-            <button
-              onClick={() => moveQueueItem(queueIndex, 'down')}
-              disabled={queueIndex === queuedPosts.length - 1}
-              className="text-gray-400 hover:text-gray-600 disabled:opacity-20 p-0.5"
-              title="Move down in queue"
-            >
-              <ChevronDown size={14} />
-            </button>
           </div>
         )}
 
@@ -801,7 +897,7 @@ export default function SocialScheduler() {
             <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
               <h2 className="text-lg font-bold text-gray-800">Your Schedule</h2>
               <p className="text-sm text-gray-500">
-                Day-by-day view of what will be posted. Reorder queued posts with the arrows.
+                Day-by-day view of what will be posted. Drag the <GripVertical size={14} className="inline text-gray-400" /> handle to reorder queued posts.
               </p>
             </div>
 
@@ -812,54 +908,69 @@ export default function SocialScheduler() {
                 <p className="text-gray-400 mt-2">Upload some content to start building your schedule.</p>
               </div>
             ) : projectedSchedule.length > 0 ? (
-              <div className="space-y-2">
-                {projectedSchedule.map((day) => {
-                  const allPostsForDay: { post: Post; queueIndex: number | null }[] = [];
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={queuedPosts.map(p => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {projectedSchedule.map((day) => {
+                      const allPostsForDay: { post: Post; queueIndex: number | null }[] = [];
 
-                  if (day.scheduledPost) {
-                    allPostsForDay.push({ post: day.scheduledPost, queueIndex: null });
-                  }
-                  if (day.queuedPost) {
-                    allPostsForDay.push({ post: day.queuedPost, queueIndex: day.queueIndex });
-                  }
-                  for (const extra of day.extraPosts) {
-                    allPostsForDay.push({ post: extra, queueIndex: null });
-                  }
+                      if (day.scheduledPost) {
+                        allPostsForDay.push({ post: day.scheduledPost, queueIndex: null });
+                      }
+                      if (day.queuedPost) {
+                        allPostsForDay.push({ post: day.queuedPost, queueIndex: day.queueIndex });
+                      }
+                      for (const extra of day.extraPosts) {
+                        allPostsForDay.push({ post: extra, queueIndex: null });
+                      }
 
-                  return (
-                    <div key={day.dateStr} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                      {/* Date header */}
-                      <div className={`px-4 py-2 flex items-center justify-between border-b ${
-                        day.isEmpty ? 'bg-gray-50' : 'bg-gradient-to-r from-purple-50 to-indigo-50'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <Calendar size={14} className={day.isEmpty ? 'text-gray-400' : 'text-purple-500'} />
-                          <span className={`text-sm font-bold ${day.isEmpty ? 'text-gray-400' : 'text-gray-800'}`}>
-                            {day.displayDate}
-                          </span>
-                        </div>
-                        {day.isEmpty && (
-                          <span className="text-xs text-gray-400 italic">No content — queue empty</span>
-                        )}
-                        {!day.isPostingDay && !day.isEmpty && (
-                          <span className="text-xs text-gray-400">Not a regular posting day</span>
-                        )}
-                      </div>
-
-                      {/* Posts for this day */}
-                      {allPostsForDay.length > 0 && (
-                        <div className="p-4 space-y-3">
-                          {allPostsForDay.map(({ post, queueIndex }) => (
-                            <div key={post.id}>
-                              {renderPostCard(post, queueIndex)}
+                      return (
+                        <div key={day.dateStr} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                          {/* Date header */}
+                          <div className={`px-4 py-2 flex items-center justify-between border-b ${
+                            day.isEmpty ? 'bg-gray-50' : 'bg-gradient-to-r from-purple-50 to-indigo-50'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <Calendar size={14} className={day.isEmpty ? 'text-gray-400' : 'text-purple-500'} />
+                              <span className={`text-sm font-bold ${day.isEmpty ? 'text-gray-400' : 'text-gray-800'}`}>
+                                {day.displayDate}
+                              </span>
                             </div>
-                          ))}
+                            {day.isEmpty && (
+                              <span className="text-xs text-gray-400 italic">No content — queue empty</span>
+                            )}
+                            {!day.isPostingDay && !day.isEmpty && (
+                              <span className="text-xs text-gray-400">Not a regular posting day</span>
+                            )}
+                          </div>
+
+                          {/* Posts for this day */}
+                          {allPostsForDay.length > 0 && (
+                            <div className="p-4 space-y-3">
+                              {allPostsForDay.map(({ post, queueIndex }) => (
+                                post.type === 'queued' && queueIndex !== null ? (
+                                  <SortableQueueItem key={post.id} post={post} queueIndex={queueIndex} />
+                                ) : (
+                                  <div key={post.id}>
+                                    {renderPostCard(post, queueIndex)}
+                                  </div>
+                                )
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
             ) : null}
           </div>
         )}
