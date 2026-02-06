@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { posts } from "@/db/schema";
 import { eq, and, asc, lte, sql } from "drizzle-orm";
-import { postToInstagram } from "@/lib/instagram";
+import { postToInstagram, isDryRunEnabled } from "@/lib/instagram";
 
 // Helper: Get the start and end of today (UTC)
 function getTodayRange(): { start: Date; end: Date } {
@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       date: new Date().toISOString().slice(0, 10),
+      dryRun: isDryRunEnabled(),
       processed: results.length,
       results,
       extraCount: extraPosts.length,

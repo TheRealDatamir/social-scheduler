@@ -8,6 +8,11 @@ interface PublishResponse {
   id: string;
 }
 
+// Check if we're in dry-run mode (for testing without Instagram credentials)
+function isDryRun(): boolean {
+  return process.env.DRY_RUN === "true";
+}
+
 // Create a media container (step 1 of posting)
 async function createMediaContainer(
   imageUrl: string,
@@ -66,6 +71,21 @@ async function publishMedia(containerId: string): Promise<string> {
 
 // Main function: Post image to Instagram
 export async function postToInstagram(imageUrl: string, caption: string) {
+  // DRY RUN MODE: Simulate success without calling Instagram API
+  if (isDryRun()) {
+    const fakeMediaId = `dry-run-${Date.now()}`;
+    console.log("[DRY RUN] Simulating Instagram post:");
+    console.log(`  - Image URL: ${imageUrl}`);
+    console.log(`  - Caption: ${caption}`);
+    console.log(`  - Fake Media ID: ${fakeMediaId}`);
+    
+    // Simulate a small delay like the real API would have
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    
+    return { mediaId: fakeMediaId, dryRun: true };
+  }
+
+  // LIVE MODE: Actually post to Instagram
   // Step 1: Create media container
   const containerId = await createMediaContainer(imageUrl, caption);
 
@@ -80,6 +100,16 @@ export async function postToInstagram(imageUrl: string, caption: string) {
 
 // Verify credentials are working
 export async function verifyInstagramConnection() {
+  // In dry-run mode, return mock account info
+  if (isDryRun()) {
+    console.log("[DRY RUN] Simulating Instagram connection verification");
+    return {
+      username: "dry_run_test_account",
+      name: "Dry Run Test Account",
+      dryRun: true,
+    };
+  }
+
   const accountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID!;
   const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN!;
 
@@ -92,4 +122,9 @@ export async function verifyInstagramConnection() {
   }
 
   return response.json();
+}
+
+// Check if dry-run mode is enabled (exported for use in API responses)
+export function isDryRunEnabled(): boolean {
+  return isDryRun();
 }
