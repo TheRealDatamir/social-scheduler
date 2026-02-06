@@ -623,7 +623,7 @@ export default function SocialScheduler() {
         )}
 
         {/* Thumbnail */}
-        <img src={post.imageUrl} alt="" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
+        <img src={post.imageUrl} alt="" className="w-32 h-32 object-cover rounded-lg flex-shrink-0" />
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -1027,7 +1027,7 @@ export default function SocialScheduler() {
                       return (
                         <div 
                           key={day.dateStr} 
-                          className={`bg-[#2b2d31] rounded-lg shadow-sm border border-[#3f4147] ${
+                          className={`bg-[#2b2d31] rounded-lg shadow-sm border border-[#3f4147] max-w-2xl ${
                             activeDragId ? 'overflow-visible' : 'overflow-hidden'
                           }`}
                         >
@@ -1077,7 +1077,7 @@ export default function SocialScheduler() {
                         <img 
                           src={activeDragPost.imageUrl} 
                           alt="" 
-                          className="w-16 h-16 object-cover rounded-lg flex-shrink-0" 
+                          className="w-32 h-32 object-cover rounded-lg flex-shrink-0" 
                         />
                         <div className="flex-1 min-w-0">
                           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-300">
