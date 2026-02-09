@@ -134,7 +134,7 @@ async function publishPost(
       collaborators
     );
 
-    // Compress image to thumbnail after successful publish to save storage
+    // Compress image to thumbnail after publish to save storage
     let finalImageUrl = post.imageUrl;
     try {
       const thumbnailUrl = await compressToThumbnail(post.imageUrl);
@@ -158,11 +158,24 @@ async function publishPost(
     return { id: post.id, status: "published" as const, mediaId: result.mediaId };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    // Compress image even on failure to save storage
+    let finalImageUrl = post.imageUrl;
+    try {
+      const thumbnailUrl = await compressToThumbnail(post.imageUrl);
+      if (thumbnailUrl) {
+        finalImageUrl = thumbnailUrl;
+      }
+    } catch (compressionError) {
+      console.error("Image compression failed, keeping original:", compressionError);
+    }
+
     await db
       .update(posts)
       .set({
         status: "failed",
         error: errorMessage,
+        imageUrl: finalImageUrl, // Update to thumbnail URL
       })
       .where(eq(posts.id, post.id));
 
