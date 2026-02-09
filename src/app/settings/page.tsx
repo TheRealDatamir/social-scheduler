@@ -237,18 +237,18 @@ export default function SettingsPage() {
                 </select>
               </div>
 
-              {/* Pause Queue Toggle */}
+              {/* Queue Active Toggle - ON = active, OFF = paused */}
               <div 
                 onClick={toggleQueuePaused}
                 className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition-colors ${
                   queuePaused 
                     ? 'bg-yellow-500/20 border border-yellow-500/50' 
-                    : 'bg-[#383a40] hover:bg-[#43454d]'
+                    : 'bg-green-500/20 border border-green-500/50'
                 }`}
               >
                 <div>
-                  <p className={`font-semibold ${queuePaused ? 'text-yellow-300' : 'text-gray-200'}`}>
-                    {queuePaused ? '⏸️ Queue Paused' : 'Queue Active'}
+                  <p className={`font-semibold ${queuePaused ? 'text-yellow-300' : 'text-green-300'}`}>
+                    {queuePaused ? '⏸️ Queue Paused' : '✓ Queue Active'}
                   </p>
                   <p className="text-sm text-gray-400">
                     {queuePaused 
@@ -257,10 +257,10 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div className={`w-12 h-6 rounded-full relative transition-colors ${
-                  queuePaused ? 'bg-yellow-500' : 'bg-gray-600'
+                  !queuePaused ? 'bg-green-500' : 'bg-gray-600'
                 }`}>
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                    queuePaused ? 'left-7' : 'left-1'
+                    !queuePaused ? 'left-7' : 'left-1'
                   }`} />
                 </div>
               </div>

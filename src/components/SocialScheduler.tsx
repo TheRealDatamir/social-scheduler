@@ -107,6 +107,7 @@ interface AppSettings {
   instagramUsername?: string;
   instagramDisplayName?: string;
   instagramProfilePic?: string;
+  queuePaused?: boolean;
 }
 
 interface LocalImage {
@@ -898,6 +899,11 @@ export default function SocialScheduler() {
                 <span className={`px-2 py-0.5 rounded-full text-xs sm:text-sm font-semibold ${daysBgColor} ${daysColor}`}>
                   {daysOfPosting} days
                 </span>
+                {settings.queuePaused && (
+                  <span className="px-2 py-0.5 rounded-full text-xs sm:text-sm font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">
+                    ⏸️ Queue Paused
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-2 text-xs sm:text-sm text-blue-400">
                 <Clock size={14} className="flex-shrink-0" />
