@@ -451,13 +451,22 @@ export default function SocialScheduler() {
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
 
-    const tooLarge = files.filter(f => f.size > MAX_FILE_SIZE);
+    // Check file types - Instagram only supports JPEG and PNG
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    const invalidTypes = files.filter(f => !allowedTypes.includes(f.type));
+    if (invalidTypes.length > 0) {
+      const names = invalidTypes.map(f => `${f.name} (${f.type || 'unknown type'})`).join(', ');
+      alert(`Instagram only supports JPEG and PNG images. These files were skipped:\n${names}`);
+    }
+    const validTypeFiles = files.filter(f => allowedTypes.includes(f.type));
+
+    const tooLarge = validTypeFiles.filter(f => f.size > MAX_FILE_SIZE);
     if (tooLarge.length > 0) {
       const names = tooLarge.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(', ');
       alert(`These files exceed Instagram's 8MB limit and were skipped:\n${names}`);
     }
 
-    const validSizeFiles = files.filter(f => f.size <= MAX_FILE_SIZE);
+    const validSizeFiles = validTypeFiles.filter(f => f.size <= MAX_FILE_SIZE);
     
     // Check aspect ratios
     const invalidAspectRatios: string[] = [];
@@ -1158,7 +1167,7 @@ export default function SocialScheduler() {
                   ref={uploadInputRef}
                   type="file"
                   multiple
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/jpg"
                   onChange={handleImageUpload}
                   className="hidden"
                 />
