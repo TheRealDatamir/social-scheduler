@@ -3,9 +3,22 @@
 html, body, #__next {
   min-height: 100%;
   min-height: 100dvh;
-  background: linear-gradient(to bottom right, #eef2ff, #faf5ff);
+  background-color: #1e1f22;
 }
 
-html, body {
-  background-color: #eef2ff;
+/* Ensure full coverage on mobile - prevents white gaps */
+html {
+  background-color: #1e1f22;
+}
+
+body {
+  background-color: #1e1f22;
+}
+
+/* Safe area handling for notched phones */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
