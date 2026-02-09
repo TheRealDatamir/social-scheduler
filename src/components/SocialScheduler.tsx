@@ -1219,15 +1219,19 @@ export default function SocialScheduler() {
                           {/* Posts for this day */}
                           {allPostsForDay.length > 0 && (
                             <div className={`p-4 space-y-3 ${activeDragId ? 'overflow-visible' : ''}`}>
-                              {allPostsForDay.map(({ post, queueIndex }) => (
-                                post.type === 'queued' && queueIndex !== null ? (
+                              {allPostsForDay.map(({ post, queueIndex }) => {
+                                // Skip sortable wrapper when editing to prevent focus loss
+                                const isBeingEdited = editingPostId === post.id;
+                                const shouldBeSortable = post.type === 'queued' && queueIndex !== null && !isBeingEdited;
+                                
+                                return shouldBeSortable ? (
                                   <SortableQueueItem key={post.id} post={post} queueIndex={queueIndex} />
                                 ) : (
                                   <div key={post.id}>
                                     {renderPostCard(post, queueIndex)}
                                   </div>
-                                )
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
