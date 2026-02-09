@@ -246,19 +246,20 @@ export async function GET(request: NextRequest) {
     });
     const currentHourNum = parseInt(currentHour, 10);
 
-    for (const account of socialAccountsWithTokens) {
+    // Process all accounts in PARALLEL for faster execution
+    const processAccount = async (account: typeof socialAccountsWithTokens[0]) => {
       const accountPostingHour = account.postingHour ?? 15;
       
       // Skip if current hour doesn't match user's preferred posting hour
       if (currentHourNum !== accountPostingHour) {
-        allResults.push({
+        return {
           accountId: account.id,
           accountName: account.displayName,
-          results: [{ id: 0, status: "skipped", error: `Not posting hour (current: ${currentHourNum}, preferred: ${accountPostingHour})` }],
-        });
-        continue;
+          results: [{ id: 0, status: "skipped" as const, error: `Not posting hour (current: ${currentHourNum}, preferred: ${accountPostingHour})` }],
+        };
       }
-      const accountResults = [];
+      
+      const accountResults: Array<{ id: number; status: string; mediaId?: string; error?: string }> = [];
 
       // 1. Find all scheduled posts due today for this account
       const scheduledPosts = await db
@@ -306,11 +307,22 @@ export async function GET(request: NextRequest) {
       }
 
       if (accountResults.length > 0) {
-        allResults.push({
+        return {
           accountId: account.id,
           accountName: account.displayName,
           results: accountResults,
-        });
+        };
+      }
+      return null;
+    };
+
+    // Run all account processing in parallel
+    const results = await Promise.all(socialAccountsWithTokens.map(processAccount));
+    
+    // Filter out nulls and add to allResults
+    for (const result of results) {
+      if (result) {
+        allResults.push(result);
       }
     }
 
