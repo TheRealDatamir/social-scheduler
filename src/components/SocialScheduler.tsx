@@ -984,10 +984,18 @@ export default function SocialScheduler() {
 
   const totalPending = queuedPosts.length + scheduledPosts.length;
 
-  // Calculate days of posting coverage
-  const daysOfPosting = projectedSchedule.filter(day => !day.isEmpty).length;
+  // Calculate days of posting coverage and last posting date
+  const daysWithPosts = projectedSchedule.filter(day => !day.isEmpty);
+  const daysOfPosting = daysWithPosts.length;
+  const lastPostingDate = daysWithPosts.length > 0 ? daysWithPosts[daysWithPosts.length - 1].date : null;
   const daysColor = daysOfPosting > 7 ? 'text-green-400' : daysOfPosting > 3 ? 'text-yellow-400' : 'text-red-400';
   const daysBgColor = daysOfPosting > 7 ? 'bg-green-500/20' : daysOfPosting > 3 ? 'bg-yellow-500/20' : 'bg-red-500/20';
+  
+  // Format last posting date
+  const formatLastDate = (date: Date | null): string => {
+    if (!date) return '';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
 
   return (
     <div className="min-h-screen bg-[#1e1f22] p-2 sm:p-4">
@@ -1006,7 +1014,7 @@ export default function SocialScheduler() {
                   {queuedPosts.length} queued · {scheduledPosts.length} scheduled
                 </span>
                 <span className={`px-2 py-0.5 rounded-full text-xs sm:text-sm font-semibold ${daysBgColor} ${daysColor}`}>
-                  {daysOfPosting} days
+                  {daysOfPosting} days{lastPostingDate ? ` → ${formatLastDate(lastPostingDate)}` : ''}
                 </span>
                 {settings.queuePaused && (
                   <span className="px-2 py-0.5 rounded-full text-xs sm:text-sm font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">
