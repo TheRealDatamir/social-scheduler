@@ -6,7 +6,6 @@ import { signOut } from 'next-auth/react';
 import {
   ArrowLeft, Instagram, Loader2, LogOut, UserPlus, X, Users
 } from 'lucide-react';
-import { getPostingTimeDisplay } from '@/lib/config';
 
 interface ConnectedAccount {
   id: number;
@@ -27,6 +26,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<ConnectedAccount | null>(null);
   const [postingFrequency, setPostingFrequency] = useState('daily');
+  const [postingHour, setPostingHour] = useState(15);
   const [queuePaused, setQueuePaused] = useState(false);
   
   // Collaborators state
@@ -53,11 +53,12 @@ export default function SettingsPage() {
         }
       }
       
-      // Load settings (includes queuePaused)
+      // Load settings (includes queuePaused and postingHour)
       const settingsRes = await fetch('/api/settings');
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
         setPostingFrequency(settings.postingFrequency);
+        setPostingHour(settings.postingHour ?? 15);
         setQueuePaused(settings.queuePaused ?? false);
       }
     } catch (error) {
@@ -95,6 +96,26 @@ export default function SettingsPage() {
       console.error('Error updating frequency:', error);
     }
   }
+
+  async function updatePostingHour(hour: number) {
+    setPostingHour(hour);
+    try {
+      await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postingHour: hour }),
+      });
+    } catch (error) {
+      console.error('Error updating posting hour:', error);
+    }
+  }
+
+  // Generate hour options (12 AM to 11 PM)
+  const hourOptions = Array.from({ length: 24 }, (_, i) => {
+    const period = i >= 12 ? 'PM' : 'AM';
+    const displayHour = i === 0 ? 12 : i > 12 ? i - 12 : i;
+    return { value: i, label: `${displayHour}:00 ${period}` };
+  });
 
   async function toggleQueuePaused() {
     const newValue = !queuePaused;
@@ -239,11 +260,26 @@ export default function SettingsPage() {
                 </select>
               </div>
 
-              {/* Posting time info - below frequency */}
+              {/* Posting Time */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Posting Time (ET)
+                </label>
+                <select
+                  value={postingHour}
+                  onChange={(e) => updatePostingHour(parseInt(e.target.value))}
+                  className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg px-4 py-2"
+                >
+                  {hourOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Info box */}
               <div className="p-4 bg-blue-500/20 rounded-lg">
                 <p className="text-blue-300 text-sm">
-                  <strong>Note:</strong> All posts are published at <strong>{getPostingTimeDisplay()}</strong> daily.
-                  The frequency setting controls which days posts go out.
+                  Posts will publish at <strong>{hourOptions.find(h => h.value === postingHour)?.label} ET</strong> on selected days.
                 </p>
               </div>
 

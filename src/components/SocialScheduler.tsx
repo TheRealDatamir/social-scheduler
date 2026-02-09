@@ -25,7 +25,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { POSTING_HOUR, getPostingTimeDisplay, isPastPostingTime } from '@/lib/config';
+// Helper to format hour for display
+function formatHour(hour: number): string {
+  const period = hour >= 12 ? 'PM' : 'AM';
+  let displayHour = hour % 12;
+  if (displayHour === 0) displayHour = 12;
+  return `${displayHour}:00 ${period} ET`;
+}
 
 // ─── Editable Caption Component ──────────────────────────────────────────────
 // Manages its own local state to prevent parent re-renders on each keystroke
@@ -103,6 +109,7 @@ interface Post {
 
 interface AppSettings {
   postingFrequency: string;
+  postingHour: number;
   timezone: string;
   hasInstagramConnected: boolean;
   instagramUsername?: string;
@@ -163,6 +170,7 @@ export default function SocialScheduler() {
 
   const [settings, setSettings] = useState<AppSettings>({
     postingFrequency: 'daily',
+    postingHour: 15,
     timezone: 'America/New_York',
     hasInstagramConnected: false,
   });
@@ -255,7 +263,8 @@ export default function SocialScheduler() {
 
     // If past posting time, today's slot is gone - start from tomorrow
     const cursor = new Date(today);
-    if (isPastPostingTime()) {
+    const currentHour = now.getHours();
+    if (currentHour >= settings.postingHour) {
       cursor.setDate(cursor.getDate() + 1);
     }
 
@@ -312,7 +321,7 @@ export default function SocialScheduler() {
     }
 
     return days;
-  }, [queuedPosts, scheduledPosts, settings.postingFrequency]);
+  }, [queuedPosts, scheduledPosts, settings.postingFrequency, settings.postingHour]);
 
   // Settings updates moved to /settings page
 
@@ -912,7 +921,7 @@ export default function SocialScheduler() {
               </div>
               <div className="flex items-center gap-2 mt-2 text-xs sm:text-sm text-blue-400">
                 <Clock size={14} className="flex-shrink-0" />
-                <span>Posts at {getPostingTimeDisplay()} · {settings.postingFrequency.replace(/-/g, ' ')}</span>
+                <span>Posts at {formatHour(settings.postingHour)} · {settings.postingFrequency.replace(/-/g, ' ')}</span>
               </div>
             </div>
             

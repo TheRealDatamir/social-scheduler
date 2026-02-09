@@ -198,6 +198,7 @@ export async function GET(request: NextRequest) {
         platformAccountId: socialAccounts.platformAccountId,
         displayName: socialAccounts.displayName,
         postingFrequency: socialAccounts.postingFrequency,
+        postingHour: socialAccounts.postingHour,
         queuePaused: socialAccounts.queuePaused,
         accessToken: accounts.access_token,
       })
@@ -211,7 +212,26 @@ export async function GET(request: NextRequest) {
       )
       .where(eq(socialAccounts.platform, "instagram"));
 
+    // Get current hour in ET (America/New_York)
+    const currentHour = new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      hour: "numeric",
+      hour12: false,
+    });
+    const currentHourNum = parseInt(currentHour, 10);
+
     for (const account of socialAccountsWithTokens) {
+      const accountPostingHour = account.postingHour ?? 15;
+      
+      // Skip if current hour doesn't match user's preferred posting hour
+      if (currentHourNum !== accountPostingHour) {
+        allResults.push({
+          accountId: account.id,
+          accountName: account.displayName,
+          results: [{ id: 0, status: "skipped", error: `Not posting hour (current: ${currentHourNum}, preferred: ${accountPostingHour})` }],
+        });
+        continue;
+      }
       const accountResults = [];
 
       // 1. Find all scheduled posts due today for this account

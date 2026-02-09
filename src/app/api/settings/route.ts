@@ -27,6 +27,7 @@ export async function GET() {
       // Return defaults if no active account exists
       return NextResponse.json({
         postingFrequency: "daily",
+        postingHour: 15,
         queuePaused: false,
         timezone: "America/New_York",
         hasInstagramConnected: false,
@@ -35,6 +36,7 @@ export async function GET() {
 
     return NextResponse.json({
       postingFrequency: account.postingFrequency,
+      postingHour: account.postingHour ?? 15,
       queuePaused: account.queuePaused ?? false,
       timezone: "America/New_York",
       hasInstagramConnected: !!account.platformAccountId,
@@ -64,6 +66,7 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, unknown> = {};
 
     if (body.postingFrequency) updates.postingFrequency = body.postingFrequency;
+    if (typeof body.postingHour === 'number') updates.postingHour = body.postingHour;
     if (typeof body.queuePaused === 'boolean') updates.queuePaused = body.queuePaused;
 
     // Get active account
@@ -89,6 +92,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       postingFrequency: updated.postingFrequency,
+      postingHour: updated.postingHour ?? 15,
       queuePaused: updated.queuePaused ?? false,
       timezone: "America/New_York",
       hasInstagramConnected: !!updated.platformAccountId,
