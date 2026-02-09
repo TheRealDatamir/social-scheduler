@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { posts, socialAccounts, accounts } from "@/db/schema";
 import { eq, and, asc, lte, lt, sql, isNotNull } from "drizzle-orm";
 import { postToInstagram, isDryRunEnabled, refreshAccessToken } from "@/lib/instagram";
+import { compressToThumbnail } from "@/lib/image-utils";
 
 // ─── Token Refresh Logic ────────────────────────────────────────────────────
 
@@ -133,12 +134,24 @@ async function publishPost(
       collaborators
     );
 
+    // Compress image to thumbnail after successful publish to save storage
+    let finalImageUrl = post.imageUrl;
+    try {
+      const thumbnailUrl = await compressToThumbnail(post.imageUrl);
+      if (thumbnailUrl) {
+        finalImageUrl = thumbnailUrl;
+      }
+    } catch (compressionError) {
+      console.error("Image compression failed, keeping original:", compressionError);
+    }
+
     await db
       .update(posts)
       .set({
         status: "published",
         publishedAt: new Date(),
         platformPostId: result.mediaId,
+        imageUrl: finalImageUrl, // Update to thumbnail URL
       })
       .where(eq(posts.id, post.id));
 
