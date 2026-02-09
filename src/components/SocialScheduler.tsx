@@ -29,6 +29,7 @@ import { CSS } from '@dnd-kit/utilities';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type PostType = 'queued' | 'scheduled';
+type UploadType = 'queued' | 'scheduled' | 'immediate';
 type PostStatus = 'pending' | 'published' | 'failed';
 type ActiveTab = 'upload' | 'schedule' | 'history';
 
@@ -48,8 +49,11 @@ interface Post {
 
 interface AppSettings {
   postingFrequency: string;
-  postingTime: string;
   timezone: string;
+  hasInstagramConnected: boolean;
+  instagramUsername?: string;
+  instagramDisplayName?: string;
+  instagramProfilePic?: string;
 }
 
 interface LocalImage {
@@ -57,9 +61,16 @@ interface LocalImage {
   file: File;
   preview: string;
   caption: string;
-  type: PostType;
+  type: UploadType;
   isExtra: boolean; // For scheduled posts: if true, doesn't consume the queue
   scheduledDate: string;
+  selectedCollaborators: string[]; // Array of usernames
+}
+
+interface Collaborator {
+  id: number;
+  username: string;
+  displayName: string | null;
 }
 
 // A single day in the projected schedule
@@ -84,7 +95,7 @@ export default function SocialScheduler() {
   const [scheduledPosts, setScheduledPosts] = useState<Post[]>([]);
   const [historyPosts, setHistoryPosts] = useState<Post[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
-  const [showSettings, setShowSettings] = useState(false);
+  // Settings moved to /settings page
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
@@ -97,9 +108,11 @@ export default function SocialScheduler() {
 
   const [settings, setSettings] = useState<AppSettings>({
     postingFrequency: 'daily',
-    postingTime: '12:00',
     timezone: 'America/New_York',
+    hasInstagramConnected: false,
   });
+
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,12 +121,13 @@ export default function SocialScheduler() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [queueRes, scheduledRes, publishedRes, failedRes, settingsRes] = await Promise.all([
+      const [queueRes, scheduledRes, publishedRes, failedRes, settingsRes, collaboratorsRes] = await Promise.all([
         fetch('/api/posts?type=queued&status=pending'),
         fetch('/api/posts?type=scheduled&status=pending'),
         fetch('/api/posts?status=published'),
         fetch('/api/posts?status=failed'),
         fetch('/api/settings'),
+        fetch('/api/collaborators'),
       ]);
 
       if (queueRes.ok) setQueuedPosts(await queueRes.json());
@@ -135,6 +149,7 @@ export default function SocialScheduler() {
       });
       setHistoryPosts(allHistory);
       if (settingsRes.ok) setSettings(await settingsRes.json());
+      if (collaboratorsRes.ok) setCollaborators(await collaboratorsRes.json());
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -240,27 +255,35 @@ export default function SocialScheduler() {
     return days;
   }, [queuedPosts, scheduledPosts, settings.postingFrequency]);
 
-  // ─── Settings ────────────────────────────────────────────────────────────
-
-  async function updateSettings(newSettings: Partial<AppSettings>) {
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      if (res.ok) setSettings(await res.json());
-    } catch (error) {
-      console.error('Error updating settings:', error);
-    }
-  }
+  // Settings updates moved to /settings page
 
   // ─── Upload Handling ─────────────────────────────────────────────────────
 
   const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB — Instagram's limit
   const MAX_CAPTION_LENGTH = 2200; // Instagram's caption character limit
+  const MIN_ASPECT_RATIO = 0.8; // 4:5 portrait
+  const MAX_ASPECT_RATIO = 1.91; // 1.91:1 landscape
 
-  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // Check if an image's aspect ratio is valid for Instagram
+  function checkAspectRatio(file: File): Promise<{ valid: boolean; ratio: number; width: number; height: number }> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = img.width / img.height;
+        URL.revokeObjectURL(img.src);
+        resolve({
+          valid: ratio >= MIN_ASPECT_RATIO && ratio <= MAX_ASPECT_RATIO,
+          ratio,
+          width: img.width,
+          height: img.height,
+        });
+      };
+      img.onerror = () => resolve({ valid: true, ratio: 1, width: 0, height: 0 }); // Assume valid on error
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
 
     const tooLarge = files.filter(f => f.size > MAX_FILE_SIZE);
@@ -269,15 +292,42 @@ export default function SocialScheduler() {
       alert(`These files exceed Instagram's 8MB limit and were skipped:\n${names}`);
     }
 
-    const validFiles = files.filter(f => f.size <= MAX_FILE_SIZE);
+    const validSizeFiles = files.filter(f => f.size <= MAX_FILE_SIZE);
+    
+    // Check aspect ratios
+    const invalidAspectRatios: string[] = [];
+    for (const file of validSizeFiles) {
+      const result = await checkAspectRatio(file);
+      if (!result.valid) {
+        const ratioStr = result.ratio.toFixed(2);
+        invalidAspectRatios.push(`${file.name} (${result.width}×${result.height}, ratio: ${ratioStr})`);
+      }
+    }
+    
+    if (invalidAspectRatios.length > 0) {
+      alert(
+        `These images have aspect ratios outside Instagram's allowed range (4:5 to 1.91:1) and were skipped:\n\n${invalidAspectRatios.join('\n')}\n\nPlease crop your images to a supported aspect ratio.`
+      );
+    }
+    
+    // Filter to only valid aspect ratio files
+    const validFiles: File[] = [];
+    for (const file of validSizeFiles) {
+      const result = await checkAspectRatio(file);
+      if (result.valid) {
+        validFiles.push(file);
+      }
+    }
+
     const newImages: LocalImage[] = validFiles.map((file) => ({
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       file,
       preview: URL.createObjectURL(file),
       caption: '',
-      type: 'queued' as PostType,
+      type: 'queued' as UploadType,
       isExtra: false,
       scheduledDate: '',
+      selectedCollaborators: [],
     }));
     setImages(prev => [...prev, ...newImages]);
     if (uploadInputRef.current) uploadInputRef.current.value = '';
@@ -295,10 +345,15 @@ export default function SocialScheduler() {
     setImages(prev => prev.filter(img => img.id !== imageId));
   }
 
-  function setImageType(imageId: string, type: PostType) {
+  function setImageType(imageId: string, type: UploadType) {
     setImages(prev => prev.map(img =>
       img.id === imageId
-        ? { ...img, type, isExtra: type === 'queued' ? false : img.isExtra, scheduledDate: type === 'queued' ? '' : img.scheduledDate }
+        ? { 
+            ...img, 
+            type, 
+            isExtra: type === 'queued' || type === 'immediate' ? false : img.isExtra, 
+            scheduledDate: type === 'queued' || type === 'immediate' ? '' : img.scheduledDate 
+          }
         : img
     ));
   }
@@ -307,6 +362,19 @@ export default function SocialScheduler() {
     setImages(prev => prev.map(img =>
       img.id === imageId ? { ...img, isExtra } : img
     ));
+  }
+
+  function toggleImageCollaborator(imageId: string, username: string) {
+    setImages(prev => prev.map(img => {
+      if (img.id !== imageId) return img;
+      const current = img.selectedCollaborators;
+      if (current.includes(username)) {
+        return { ...img, selectedCollaborators: current.filter(u => u !== username) };
+      } else if (current.length < 3) {
+        return { ...img, selectedCollaborators: [...current, username] };
+      }
+      return img; // Max 3 reached
+    }));
   }
 
   async function uploadAll() {
@@ -333,6 +401,8 @@ export default function SocialScheduler() {
     setUploading(true);
 
     try {
+      const immediatePostIds: number[] = [];
+
       for (const img of images) {
         // Client-side upload directly to Vercel Blob (bypasses body size limit)
         const blob = await upload(img.file.name, img.file, {
@@ -341,29 +411,47 @@ export default function SocialScheduler() {
         });
         const url = blob.url;
 
+        // For 'immediate', store as 'queued' then publish right away
+        const storeType = img.type === 'immediate' ? 'queued' : img.type;
+
         const postBody: Record<string, unknown> = {
           imageUrl: url,
           caption: img.caption,
-          type: img.type,
+          type: storeType,
           isExtra: img.type === 'scheduled' ? img.isExtra : false,
+          collaboratorUsernames: img.selectedCollaborators,
         };
 
         if (img.type === 'scheduled') {
           postBody.scheduledAt = new Date(img.scheduledDate + 'T12:00:00').toISOString();
         }
 
-        await fetch('/api/posts', {
+        const res = await fetch('/api/posts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(postBody),
         });
 
+        if (img.type === 'immediate' && res.ok) {
+          const post = await res.json();
+          immediatePostIds.push(post.id);
+        }
+
         URL.revokeObjectURL(img.preview);
+      }
+
+      // Publish immediate posts right away
+      for (const postId of immediatePostIds) {
+        const publishRes = await fetch(`/api/posts/${postId}/publish`, { method: 'POST' });
+        if (!publishRes.ok) {
+          const err = await publishRes.json();
+          alert(`Failed to publish immediately: ${err.error}`);
+        }
       }
 
       setImages([]);
       await loadData();
-      setActiveTab('schedule');
+      setActiveTab(immediatePostIds.length > 0 ? 'history' : 'schedule');
     } catch (error) {
       console.error('Error uploading:', error);
       alert('Failed to upload posts. Please try again.');
@@ -528,13 +616,15 @@ export default function SocialScheduler() {
     return 'bg-amber-500/30 text-amber-300';
   }
 
-  function uploadTypeBadgeClass(type: PostType, isExtra: boolean): string {
+  function uploadTypeBadgeClass(type: UploadType, isExtra: boolean): string {
+    if (type === 'immediate') return 'bg-green-500/30 text-green-300';
     if (type === 'queued') return 'bg-blue-500/30 text-blue-300';
     if (isExtra) return 'bg-emerald-500/30 text-emerald-300';
     return 'bg-amber-500/30 text-amber-300';
   }
 
-  function uploadTypeLabel(type: PostType, isExtra: boolean): string {
+  function uploadTypeLabel(type: UploadType, isExtra: boolean): string {
+    if (type === 'immediate') return 'Post Now';
     if (type === 'queued') return 'Queued';
     if (isExtra) return 'Scheduled (Extra)';
     return 'Scheduled';
@@ -751,71 +841,72 @@ export default function SocialScheduler() {
   const daysBgColor = daysOfPosting > 7 ? 'bg-green-500/20' : daysOfPosting > 3 ? 'bg-yellow-500/20' : 'bg-red-500/20';
 
   return (
-    <div className="min-h-screen bg-[#1e1f22] p-4">
+    <div className="min-h-screen bg-[#1e1f22] p-2 sm:p-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-100 flex items-center gap-2">
-                <Instagram className="text-purple-400" />
-                Social Post Scheduler
+        <div className="bg-[#2b2d31] rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+          {/* Mobile: Stack vertically, Desktop: Side by side */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-3xl font-bold text-gray-100 flex items-center gap-2">
+                <Instagram className="text-purple-400 flex-shrink-0" size={24} />
+                <span className="truncate">Social Post Scheduler</span>
               </h1>
-              <div className="flex items-center gap-3 mt-2">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2 text-sm sm:text-base">
                 <span className="text-gray-400">
-                  {queuedPosts.length} in queue · {scheduledPosts.length} scheduled · Posting {settings.postingFrequency.replace(/-/g, ' ')}
+                  {queuedPosts.length} queued · {scheduledPosts.length} scheduled
                 </span>
-                <span className={`px-2 py-0.5 rounded-full text-sm font-semibold ${daysBgColor} ${daysColor}`}>
-                  {daysOfPosting} days of content
+                <span className={`px-2 py-0.5 rounded-full text-xs sm:text-sm font-semibold ${daysBgColor} ${daysColor}`}>
+                  {daysOfPosting} days
                 </span>
               </div>
+              <div className="flex items-center gap-2 mt-2 text-xs sm:text-sm text-blue-400">
+                <Clock size={14} className="flex-shrink-0" />
+                <span>Posts at 3:00 PM ET · {settings.postingFrequency.replace(/-/g, ' ')}</span>
+              </div>
             </div>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#383a40] hover:bg-[#43454d] text-gray-200 rounded-lg transition-colors"
-            >
-              <Settings size={20} />
-              Settings
-            </button>
+            
+            {/* Account & Settings - spread apart */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto">
+              {/* Active Account Display */}
+              {settings.hasInstagramConnected && (
+                <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 bg-[#383a40] rounded-lg">
+                  {settings.instagramProfilePic ? (
+                    <img
+                      src={settings.instagramProfilePic}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                      <Instagram size={16} className="text-white" />
+                    </div>
+                  )}
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-gray-200">@{settings.instagramUsername}</p>
+                    <p className="text-xs text-gray-400 hidden sm:block">{settings.instagramDisplayName}</p>
+                  </div>
+                </div>
+              )}
+              <a
+                href="/settings"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-[#383a40] hover:bg-[#43454d] text-gray-200 rounded-lg transition-colors"
+              >
+                <Settings size={20} />
+                <span className="hidden sm:inline">Settings</span>
+              </a>
+            </div>
           </div>
         </div>
 
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-100 mb-4">Posting Settings</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Posting Frequency</label>
-                <select
-                  value={settings.postingFrequency}
-                  onChange={(e) => updateSettings({ postingFrequency: e.target.value })}
-                  className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg px-4 py-2"
-                >
-                  {frequencyOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">Posting Time</label>
-                <input
-                  type="time"
-                  value={settings.postingTime}
-                  onChange={(e) => updateSettings({ postingTime: e.target.value })}
-                  className="w-full bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg px-4 py-2"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Settings moved to /settings page */}
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 flex-wrap">
+        <div className="flex gap-1 sm:gap-2 mb-4 sm:mb-6">
           {[
-            { key: 'upload' as ActiveTab, icon: Upload, label: 'Upload' },
-            { key: 'schedule' as ActiveTab, icon: Calendar, label: `Schedule (${totalPending})` },
-            { key: 'history' as ActiveTab, icon: History, label: 'History' },
+            { key: 'upload' as ActiveTab, icon: Upload, label: 'Upload', mobileLabel: 'Upload' },
+            { key: 'schedule' as ActiveTab, icon: Calendar, label: `Schedule (${totalPending})`, mobileLabel: `(${totalPending})` },
+            { key: 'history' as ActiveTab, icon: History, label: 'History', mobileLabel: 'History' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -826,22 +917,23 @@ export default function SocialScheduler() {
                   setActiveTab(tab.key);
                 }
               }}
-              className={`px-5 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+              className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 sm:py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-1 sm:gap-2 text-sm sm:text-base ${
                 activeTab === tab.key
                   ? 'bg-purple-600 text-white shadow-lg'
                   : 'bg-[#2b2d31] text-gray-300 hover:bg-[#383a40]'
               }`}
             >
-              <tab.icon size={18} />
-              {tab.label}
+              <tab.icon size={18} className="flex-shrink-0" />
+              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="sm:hidden">{tab.mobileLabel}</span>
             </button>
           ))}
         </div>
 
         {/* ─── Upload Tab ───────────────────────────────────────────────── */}
         {activeTab === 'upload' && (
-          <div className="space-y-6">
-            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-8">
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-4 sm:p-8">
               <label className="block cursor-pointer">
                 <div className="border-4 border-dashed border-purple-500/50 rounded-lg p-12 text-center hover:border-purple-400 transition-colors bg-purple-500/10">
                   <Upload className="mx-auto mb-4 text-purple-400" size={48} />
@@ -893,18 +985,18 @@ export default function SocialScheduler() {
                       <div className="p-4 space-y-3">
                         <div>
                           <label className="text-xs font-semibold text-gray-400 block mb-1">Post Type</label>
-                          <div className="flex gap-2">
-                            {(['queued', 'scheduled'] as PostType[]).map(t => (
+                          <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                            {(['queued', 'scheduled', 'immediate'] as UploadType[]).map(t => (
                               <button
                                 key={t}
                                 onClick={() => setImageType(image.id, t)}
-                                className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                                className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
                                   image.type === t
-                                    ? 'bg-purple-600 text-white'
+                                    ? t === 'immediate' ? 'bg-green-600 text-white' : 'bg-purple-600 text-white'
                                     : 'bg-[#383a40] text-gray-300 hover:bg-[#43454d]'
                                 }`}
                               >
-                                {t === 'queued' ? 'Queued' : 'Scheduled'}
+                                {t === 'queued' ? 'Queue' : t === 'scheduled' ? 'Schedule' : 'Now'}
                               </button>
                             ))}
                           </div>
@@ -966,6 +1058,42 @@ export default function SocialScheduler() {
                             </p>
                           )}
                         </div>
+
+                        {/* Collaborators Selection */}
+                        {collaborators.length > 0 && (
+                          <div>
+                            <label className="text-xs font-semibold text-gray-400 block mb-1">
+                              Collaborators (max 3)
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {collaborators.map(collab => {
+                                const isSelected = image.selectedCollaborators.includes(collab.username);
+                                const isDisabled = !isSelected && image.selectedCollaborators.length >= 3;
+                                return (
+                                  <button
+                                    key={collab.id}
+                                    onClick={() => toggleImageCollaborator(image.id, collab.username)}
+                                    disabled={isDisabled}
+                                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                                      isSelected
+                                        ? 'bg-purple-600 text-white'
+                                        : isDisabled
+                                          ? 'bg-[#383a40] text-gray-600 cursor-not-allowed'
+                                          : 'bg-[#383a40] text-gray-300 hover:bg-[#43454d]'
+                                    }`}
+                                  >
+                                    @{collab.username}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {image.selectedCollaborators.length > 0 && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Selected: {image.selectedCollaborators.map(u => `@${u}`).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -48,18 +48,27 @@ export const verificationTokens = sqliteTable("verification_tokens", {
 // ============================================
 
 // Social media accounts (Instagram for now, expandable later)
-// Renamed from 'accounts' to avoid conflict with NextAuth
+// Note: Access token is stored in the NextAuth `accounts` table, not here
 export const socialAccounts = sqliteTable("social_accounts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  platform: text("platform").notNull(), // 'instagram', 'bluesky', etc.
-  platformAccountId: text("platform_account_id"), // Instagram Business Account ID
-  identifier: text("identifier").notNull(), // username or display handle
+  platform: text("platform").notNull(), // 'instagram'
+  platformAccountId: text("platform_account_id"), // Instagram User ID
+  identifier: text("identifier").notNull(), // @username
   displayName: text("display_name"),
-  accessToken: text("access_token"), // Platform-specific access token
-  tokenExpiresAt: integer("token_expires_at", { mode: "timestamp" }),
+  profilePicture: text("profile_picture"), // Profile picture URL
+  isActive: integer("is_active", { mode: "boolean" }).default(true),
+  queuePaused: integer("queue_paused", { mode: "boolean" }).default(false), // Pause queue processing
   postingFrequency: text("posting_frequency").notNull().default("daily"),
-  postingTime: text("posting_time").notNull().default("12:00"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+// Frequent collaborators for Instagram posts
+export const collaborators = sqliteTable("collaborators", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  socialAccountId: integer("social_account_id").notNull().references(() => socialAccounts.id, { onDelete: "cascade" }),
+  username: text("username").notNull(), // Instagram username (without @)
+  displayName: text("display_name"), // Optional friendly name
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
@@ -77,6 +86,7 @@ export const posts = sqliteTable("posts", {
   status: text("status").notNull().default("pending"), // 'pending' | 'published' | 'failed'
   platformPostId: text("platform_post_id"),
   error: text("error"),
+  collaboratorUsernames: text("collaborator_usernames"), // JSON array of Instagram usernames
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
@@ -90,6 +100,8 @@ export type SocialAccount = typeof socialAccounts.$inferSelect;
 export type NewSocialAccount = typeof socialAccounts.$inferInsert;
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
+export type Collaborator = typeof collaborators.$inferSelect;
+export type NewCollaborator = typeof collaborators.$inferInsert;
 export type PostType = "queued" | "scheduled";
 export type PostStatus = "pending" | "published" | "failed";
 

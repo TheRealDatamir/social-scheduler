@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { posts, socialAccounts } from "@/db/schema";
-import { eq, and, asc, lte, sql, isNotNull } from "drizzle-orm";
+import { posts, socialAccounts, accounts } from "@/db/schema";
+import { eq, and, asc, lte, sql } from "drizzle-orm";
 import { postToInstagram, isDryRunEnabled } from "@/lib/instagram";
 
 // Helper: Get the start and end of today (UTC)
@@ -12,17 +12,58 @@ function getTodayRange(): { start: Date; end: Date } {
   return { start, end };
 }
 
+// Helper: Check if today is a posting day based on frequency
+function isPostingDay(frequency: string): boolean {
+  const now = new Date();
+  const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const dayOfYear = Math.floor(
+    (now.getTime() - new Date(now.getUTCFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  switch (frequency) {
+    case "daily":
+      return true;
+    
+    case "every-other-day":
+      // Post on odd days of the year
+      return dayOfYear % 2 === 1;
+    
+    case "3x-week":
+      // Monday (1), Wednesday (3), Friday (5)
+      return [1, 3, 5].includes(dayOfWeek);
+    
+    case "weekdays":
+      // Monday (1) through Friday (5)
+      return dayOfWeek >= 1 && dayOfWeek <= 5;
+    
+    default:
+      // Unknown frequency, default to daily
+      return true;
+  }
+}
+
 // Helper: Publish a single post
 async function publishPost(
-  post: { id: number; imageUrl: string; caption: string },
+  post: { id: number; imageUrl: string; caption: string; collaboratorUsernames: string | null },
   account: { platformAccountId: string | null; accessToken: string | null }
 ) {
   try {
+    // Parse collaborators from JSON
+    let collaborators: string[] | undefined;
+    if (post.collaboratorUsernames) {
+      try {
+        collaborators = JSON.parse(post.collaboratorUsernames);
+      } catch {
+        console.warn("Failed to parse collaborator usernames:", post.collaboratorUsernames);
+      }
+    }
+
     const result = await postToInstagram(
       post.imageUrl, 
       post.caption,
       account.platformAccountId || undefined,
-      account.accessToken || undefined
+      account.accessToken || undefined,
+      collaborators
     );
 
     await db
@@ -71,13 +112,28 @@ export async function POST(request: NextRequest) {
       results: Array<{ id: number; status: string; mediaId?: string; error?: string }>;
     }> = [];
 
-    // Get all social accounts that have Instagram configured
-    const accounts = await db
-      .select()
+    // Get all social accounts with their access tokens from NextAuth accounts table
+    const socialAccountsWithTokens = await db
+      .select({
+        id: socialAccounts.id,
+        userId: socialAccounts.userId,
+        platformAccountId: socialAccounts.platformAccountId,
+        displayName: socialAccounts.displayName,
+        postingFrequency: socialAccounts.postingFrequency,
+        queuePaused: socialAccounts.queuePaused,
+        accessToken: accounts.access_token,
+      })
       .from(socialAccounts)
+      .innerJoin(
+        accounts,
+        and(
+          eq(accounts.userId, socialAccounts.userId),
+          eq(accounts.provider, "instagram")
+        )
+      )
       .where(eq(socialAccounts.platform, "instagram"));
 
-    for (const account of accounts) {
+    for (const account of socialAccountsWithTokens) {
       const accountResults = [];
 
       // 1. Find all scheduled posts due today for this account
@@ -103,8 +159,10 @@ export async function POST(request: NextRequest) {
       // 2. Check if any scheduled post consumes the queue (isExtra=false)
       const hasQueueConsumingPost = scheduledPosts.some(post => !post.isExtra);
 
-      // 3. If no scheduled post consumed the queue, pull from queue
-      if (!hasQueueConsumingPost) {
+      // 3. If no scheduled post consumed the queue, check if today is a posting day
+      //    Scheduled posts always go out; queue posts respect the frequency setting
+      //    Also skip queue if the account has paused queue processing
+      if (!hasQueueConsumingPost && !account.queuePaused && isPostingDay(account.postingFrequency)) {
         const [nextQueued] = await db
           .select()
           .from(posts)

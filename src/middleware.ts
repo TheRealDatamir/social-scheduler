@@ -7,7 +7,7 @@ export default auth((req) => {
   const isAuthApi = req.nextUrl.pathname.startsWith("/api/auth");
   const isPublishApi = req.nextUrl.pathname.startsWith("/api/publish"); // Cron endpoint
 
-  // Allow auth-related routes and cron endpoint
+  // Allow auth-related routes (includes /api/auth/refresh-tokens) and cron endpoint
   if (isAuthApi || isPublishApi) {
     return NextResponse.next();
   }

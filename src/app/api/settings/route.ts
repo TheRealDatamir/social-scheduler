@@ -4,7 +4,7 @@ import { socialAccounts } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 
-// GET /api/settings - Get posting settings from the user's account
+// GET /api/settings - Get posting settings from the user's active account
 export async function GET() {
   try {
     const session = await auth();
@@ -12,16 +12,22 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Get active account
     const [account] = await db
       .select()
       .from(socialAccounts)
-      .where(eq(socialAccounts.userId, session.user.id));
+      .where(
+        and(
+          eq(socialAccounts.userId, session.user.id),
+          eq(socialAccounts.isActive, true)
+        )
+      );
 
     if (!account) {
-      // Return defaults if no account exists yet
+      // Return defaults if no active account exists
       return NextResponse.json({
         postingFrequency: "daily",
-        postingTime: "12:00",
+        queuePaused: false,
         timezone: "America/New_York",
         hasInstagramConnected: false,
       });
@@ -29,23 +35,24 @@ export async function GET() {
 
     return NextResponse.json({
       postingFrequency: account.postingFrequency,
-      postingTime: account.postingTime,
+      queuePaused: account.queuePaused ?? false,
       timezone: "America/New_York",
       hasInstagramConnected: !!account.platformAccountId,
       instagramUsername: account.identifier,
+      instagramDisplayName: account.displayName,
+      instagramProfilePic: account.profilePicture,
     });
   } catch (error) {
     console.error("Failed to fetch settings:", error);
     return NextResponse.json({
       postingFrequency: "daily",
-      postingTime: "12:00",
       timezone: "America/New_York",
       hasInstagramConnected: false,
     });
   }
 }
 
-// PATCH /api/settings - Update posting settings
+// PATCH /api/settings - Update posting settings for active account
 export async function PATCH(request: NextRequest) {
   try {
     const session = await auth();
@@ -57,51 +64,38 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, unknown> = {};
 
     if (body.postingFrequency) updates.postingFrequency = body.postingFrequency;
-    if (body.postingTime) updates.postingTime = body.postingTime;
+    if (typeof body.queuePaused === 'boolean') updates.queuePaused = body.queuePaused;
 
-    // Check if account exists for this user
-    const [existing] = await db
+    // Get active account
+    const [activeAccount] = await db
       .select()
       .from(socialAccounts)
-      .where(eq(socialAccounts.userId, session.user.id));
+      .where(
+        and(
+          eq(socialAccounts.userId, session.user.id),
+          eq(socialAccounts.isActive, true)
+        )
+      );
 
-    if (existing) {
-      const [updated] = await db
-        .update(socialAccounts)
-        .set(updates)
-        .where(and(
-          eq(socialAccounts.id, existing.id),
-          eq(socialAccounts.userId, session.user.id)
-        ))
-        .returning();
-
-      return NextResponse.json({
-        postingFrequency: updated.postingFrequency,
-        postingTime: updated.postingTime,
-        timezone: "America/New_York",
-        hasInstagramConnected: !!updated.platformAccountId,
-      });
-    } else {
-      // Create a new account for this user
-      const [created] = await db
-        .insert(socialAccounts)
-        .values({
-          userId: session.user.id,
-          platform: "instagram",
-          identifier: "pending", // Will be updated when Instagram is connected
-          displayName: session.user.name || "My Account",
-          postingFrequency: body.postingFrequency || "daily",
-          postingTime: body.postingTime || "12:00",
-        })
-        .returning();
-
-      return NextResponse.json({
-        postingFrequency: created.postingFrequency,
-        postingTime: created.postingTime,
-        timezone: "America/New_York",
-        hasInstagramConnected: false,
-      });
+    if (!activeAccount) {
+      return NextResponse.json({ error: "No active account" }, { status: 400 });
     }
+
+    const [updated] = await db
+      .update(socialAccounts)
+      .set(updates)
+      .where(eq(socialAccounts.id, activeAccount.id))
+      .returning();
+
+    return NextResponse.json({
+      postingFrequency: updated.postingFrequency,
+      queuePaused: updated.queuePaused ?? false,
+      timezone: "America/New_York",
+      hasInstagramConnected: !!updated.platformAccountId,
+      instagramUsername: updated.identifier,
+      instagramDisplayName: updated.displayName,
+      instagramProfilePic: updated.profilePicture,
+    });
   } catch (error) {
     console.error("Failed to update settings:", error);
     return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });

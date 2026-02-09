@@ -1,4 +1,6 @@
-const GRAPH_API_BASE = "https://graph.facebook.com/v18.0";
+// Instagram API with Instagram Login
+// Uses graph.instagram.com instead of graph.facebook.com
+const GRAPH_API_BASE = "https://graph.instagram.com/v21.0";
 
 interface MediaContainerResponse {
   id: string;
@@ -8,34 +10,17 @@ interface PublishResponse {
   id: string;
 }
 
-// Check if Instagram credentials are configured (env fallback)
-function hasEnvCredentials(): boolean {
-  const accountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
-  const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
-  return !!(accountId && accessToken && accountId.trim() && accessToken.trim());
-}
-
 // Check if we're in dry-run mode
-// Auto-enables when Instagram credentials are missing
-// Can also be forced with DRY_RUN=true or disabled with DRY_RUN=false
 function isDryRun(accountId?: string, accessToken?: string): boolean {
   // Explicit override takes precedence
   if (process.env.DRY_RUN === "true") return true;
   if (process.env.DRY_RUN === "false") return false;
   
-  // If account-specific credentials provided, check those
+  // If account-specific credentials provided, we're live
   if (accountId && accessToken) return false;
   
-  // Auto-detect: if no credentials, use dry-run mode
-  return !hasEnvCredentials();
-}
-
-// Get credentials (account-specific or env fallback)
-function getCredentials(accountId?: string, accessToken?: string) {
-  return {
-    accountId: accountId || process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID!,
-    accessToken: accessToken || process.env.INSTAGRAM_ACCESS_TOKEN!,
-  };
+  // No credentials = dry-run
+  return true;
 }
 
 // Create a media container (step 1 of posting)
@@ -43,18 +28,26 @@ async function createMediaContainer(
   imageUrl: string,
   caption: string,
   accountId: string,
-  accessToken: string
+  accessToken: string,
+  collaborators?: string[]
 ): Promise<string> {
+  const body: Record<string, unknown> = {
+    image_url: imageUrl,
+    caption: caption,
+    access_token: accessToken,
+  };
+
+  // Add collaborators if provided (max 3)
+  if (collaborators && collaborators.length > 0) {
+    body.collaborators = collaborators.slice(0, 3);
+  }
+
   const response = await fetch(
     `${GRAPH_API_BASE}/${accountId}/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url: imageUrl,
-        caption: caption,
-        access_token: accessToken,
-      }),
+      body: JSON.stringify(body),
     }
   );
 
@@ -95,12 +88,12 @@ async function publishMedia(
 }
 
 // Main function: Post image to Instagram
-// Accepts optional account-specific credentials (falls back to env vars)
 export async function postToInstagram(
   imageUrl: string, 
   caption: string,
   platformAccountId?: string,
-  accountAccessToken?: string
+  accountAccessToken?: string,
+  collaborators?: string[]
 ) {
   // DRY RUN MODE: Simulate success without calling Instagram API
   if (isDryRun(platformAccountId, accountAccessToken)) {
@@ -108,6 +101,7 @@ export async function postToInstagram(
     console.log("[DRY RUN] Simulating Instagram post:");
     console.log(`  - Image URL: ${imageUrl}`);
     console.log(`  - Caption: ${caption}`);
+    console.log(`  - Collaborators: ${collaborators?.join(", ") || "none"}`);
     console.log(`  - Fake Media ID: ${fakeMediaId}`);
     
     // Simulate a small delay like the real API would have
@@ -116,11 +110,17 @@ export async function postToInstagram(
     return { mediaId: fakeMediaId, dryRun: true };
   }
 
-  const { accountId, accessToken } = getCredentials(platformAccountId, accountAccessToken);
+  const accountId = platformAccountId!;
+  const accessToken = accountAccessToken!;
 
-  // LIVE MODE: Actually post to Instagram
-  // Step 1: Create media container
-  const containerId = await createMediaContainer(imageUrl, caption, accountId, accessToken);
+  // Step 1: Create media container (with collaborators if provided)
+  const containerId = await createMediaContainer(
+    imageUrl, 
+    caption, 
+    accountId, 
+    accessToken,
+    collaborators
+  );
 
   // Step 2: Wait a moment for processing (Instagram recommends this)
   await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -146,10 +146,8 @@ export async function verifyInstagramConnection(
     };
   }
 
-  const { accountId, accessToken } = getCredentials(platformAccountId, accountAccessToken);
-
   const response = await fetch(
-    `${GRAPH_API_BASE}/${accountId}?fields=username,name&access_token=${accessToken}`
+    `${GRAPH_API_BASE}/${platformAccountId}?fields=username,name&access_token=${accountAccessToken}`
   );
 
   if (!response.ok) {
@@ -162,4 +160,23 @@ export async function verifyInstagramConnection(
 // Check if dry-run mode is enabled (exported for use in API responses)
 export function isDryRunEnabled(): boolean {
   return isDryRun();
+}
+
+// Refresh a long-lived access token
+// Instagram tokens last 60 days and can be refreshed anytime before expiry
+// Returns the new token and expiration time
+export async function refreshAccessToken(currentToken: string): Promise<{
+  access_token: string;
+  expires_in: number;
+}> {
+  const response = await fetch(
+    `${GRAPH_API_BASE}/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`Failed to refresh token: ${JSON.stringify(error)}`);
+  }
+
+  return response.json();
 }

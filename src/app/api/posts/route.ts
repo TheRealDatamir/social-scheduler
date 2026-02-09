@@ -4,27 +4,34 @@ import { posts, socialAccounts } from "@/db/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 
-// Helper to get or create user's social account
+// Helper to get user's active social account
 async function getUserAccount(userId: string) {
-  const [account] = await db
+  // Get active account
+  const [activeAccount] = await db
     .select()
     .from(socialAccounts)
-    .where(eq(socialAccounts.userId, userId));
+    .where(and(eq(socialAccounts.userId, userId), eq(socialAccounts.isActive, true)));
 
-  if (account) return account;
+  if (activeAccount) return activeAccount;
 
-  // Create default account for user
-  const [newAccount] = await db
-    .insert(socialAccounts)
-    .values({
-      userId,
-      platform: "instagram",
-      identifier: "pending",
-      displayName: "My Account",
-    })
-    .returning();
+  // No active account - try to get any account and make it active
+  const [anyAccount] = await db
+    .select()
+    .from(socialAccounts)
+    .where(eq(socialAccounts.userId, userId))
+    .limit(1);
 
-  return newAccount;
+  if (anyAccount) {
+    const [activated] = await db
+      .update(socialAccounts)
+      .set({ isActive: true })
+      .where(eq(socialAccounts.id, anyAccount.id))
+      .returning();
+    return activated;
+  }
+
+  // No accounts at all - return null (user needs to connect an account first)
+  return null;
 }
 
 // GET /api/posts - List posts, filterable by status and type
@@ -36,6 +43,11 @@ export async function GET(request: NextRequest) {
     }
 
     const account = await getUserAccount(session.user.id);
+
+    // No account connected yet - return empty array
+    if (!account) {
+      return NextResponse.json([]);
+    }
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status"); // 'pending', 'published', 'failed'
@@ -72,8 +84,15 @@ export async function POST(request: NextRequest) {
 
     const account = await getUserAccount(session.user.id);
 
+    if (!account) {
+      return NextResponse.json(
+        { error: "No Instagram account connected. Please connect an account in Settings." },
+        { status: 400 }
+      );
+    }
+
     const body = await request.json();
-    const { imageUrl, caption, type = "queued", scheduledAt, queueOrder, isExtra = false } = body;
+    const { imageUrl, caption, type = "queued", scheduledAt, queueOrder, isExtra = false, collaboratorUsernames = [] } = body;
 
     if (!imageUrl || !caption) {
       return NextResponse.json(
@@ -116,6 +135,11 @@ export async function POST(request: NextRequest) {
       finalQueueOrder = (maxOrderResult[0]?.queueOrder ?? 0) + 1;
     }
 
+    // Validate collaborators (max 3)
+    const validCollaborators = Array.isArray(collaboratorUsernames) 
+      ? collaboratorUsernames.slice(0, 3).map((u: string) => u.replace(/^@/, '').trim().toLowerCase()).filter(Boolean)
+      : [];
+
     const [newPost] = await db
       .insert(posts)
       .values({
@@ -127,6 +151,7 @@ export async function POST(request: NextRequest) {
         scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         queueOrder: type === "queued" ? finalQueueOrder : null,
         status: "pending",
+        collaboratorUsernames: validCollaborators.length > 0 ? JSON.stringify(validCollaborators) : null,
       })
       .returning();
 
