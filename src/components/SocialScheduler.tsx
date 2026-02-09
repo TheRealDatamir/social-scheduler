@@ -1156,13 +1156,13 @@ export default function SocialScheduler() {
         {/* ─── Upload Tab ───────────────────────────────────────────────── */}
         {activeTab === 'upload' && (
           <div className="space-y-4 sm:space-y-6">
-            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-4 sm:p-8">
+            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-4 sm:p-6">
               <label className="block cursor-pointer">
-                <div className="border-4 border-dashed border-purple-500/50 rounded-lg p-12 text-center hover:border-purple-400 transition-colors bg-purple-500/10">
-                  <Upload className="mx-auto mb-4 text-purple-400" size={48} />
-                  <p className="text-lg font-semibold text-gray-200">Drop images here or click to upload</p>
-                  <p className="text-sm text-gray-400 mt-2">Upload content to add to your queue or schedule</p>
+                <div className="flex items-center justify-center gap-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-lg font-semibold hover:from-purple-500 hover:to-indigo-500 transition-all">
+                  <Upload size={24} />
+                  <span className="text-lg">Click to Upload Images</span>
                 </div>
+                <p className="text-sm text-gray-400 mt-3 text-center">JPEG and PNG only • Max 8MB per image</p>
                 <input
                   ref={uploadInputRef}
                   type="file"
