@@ -60,7 +60,12 @@ export const socialAccounts = sqliteTable("social_accounts", {
   isActive: integer("is_active", { mode: "boolean" }).default(true),
   queuePaused: integer("queue_paused", { mode: "boolean" }).default(false), // Pause queue processing
   postingFrequency: text("posting_frequency").notNull().default("daily"),
+  postingTime: text("posting_time").default("12:00"), // Legacy column, kept for compatibility
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  // Legacy columns from old schema - tokens now stored in NextAuth accounts table
+  accessToken: text("access_token"),
+  tokenExpiresAt: integer("token_expires_at"),
+  pageId: text("page_id"),
 });
 
 // Frequent collaborators for Instagram posts
