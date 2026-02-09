@@ -86,6 +86,107 @@ const EditableCaption = memo(function EditableCaption({ value, onChange, maxLeng
   );
 });
 
+// ─── Collaborators Section Component ─────────────────────────────────────────
+// Inline collaborator selection with add-new functionality
+
+interface Collaborator {
+  id: number;
+  username: string;
+  displayName: string | null;
+}
+
+interface CollaboratorsSectionProps {
+  collaborators: Collaborator[];
+  selectedCollaborators: string[];
+  onToggle: (username: string) => void;
+  onAddNew: (username: string) => Promise<void>;
+}
+
+function CollaboratorsSection({ collaborators, selectedCollaborators, onToggle, onAddNew }: CollaboratorsSectionProps) {
+  const [showAddInput, setShowAddInput] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    if (!newUsername.trim()) return;
+    setAdding(true);
+    await onAddNew(newUsername.trim().replace('@', ''));
+    setNewUsername('');
+    setShowAddInput(false);
+    setAdding(false);
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-semibold text-gray-400 block mb-1">
+        Collaborators (max 3)
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {collaborators.map(collab => {
+          const isSelected = selectedCollaborators.includes(collab.username);
+          const isDisabled = !isSelected && selectedCollaborators.length >= 3;
+          return (
+            <button
+              key={collab.id}
+              onClick={() => onToggle(collab.username)}
+              disabled={isDisabled}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                isSelected
+                  ? 'bg-purple-600 text-white'
+                  : isDisabled
+                    ? 'bg-[#383a40] text-gray-600 cursor-not-allowed'
+                    : 'bg-[#383a40] text-gray-300 hover:bg-[#43454d]'
+              }`}
+            >
+              @{collab.username}
+            </button>
+          );
+        })}
+        
+        {/* Add new collaborator button/input */}
+        {showAddInput ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+              placeholder="username"
+              className="w-28 px-2 py-1 bg-[#383a40] border border-[#4a4d55] text-gray-200 rounded-lg text-sm"
+              autoFocus
+            />
+            <button
+              onClick={handleAdd}
+              disabled={adding || !newUsername.trim()}
+              className="px-2 py-1 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50"
+            >
+              {adding ? '...' : 'Add'}
+            </button>
+            <button
+              onClick={() => { setShowAddInput(false); setNewUsername(''); }}
+              className="px-2 py-1 bg-[#383a40] text-gray-400 rounded-lg text-sm hover:bg-[#43454d]"
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAddInput(true)}
+            className="px-3 py-1.5 rounded-full text-sm font-medium bg-[#383a40] text-gray-400 hover:bg-[#43454d] hover:text-gray-200 transition-colors border border-dashed border-gray-600"
+          >
+            + Add
+          </button>
+        )}
+      </div>
+      {selectedCollaborators.length > 0 && (
+        <p className="text-xs text-gray-500 mt-1">
+          Selected: {selectedCollaborators.map(u => `@${u}`).join(', ')}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type PostType = 'queued' | 'scheduled';
@@ -127,12 +228,6 @@ interface LocalImage {
   isExtra: boolean; // For scheduled posts: if true, doesn't consume the queue
   scheduledDate: string;
   selectedCollaborators: string[]; // Array of usernames
-}
-
-interface Collaborator {
-  id: number;
-  username: string;
-  displayName: string | null;
 }
 
 // A single day in the projected schedule
@@ -1119,40 +1214,29 @@ export default function SocialScheduler() {
                         </div>
 
                         {/* Collaborators Selection */}
-                        {collaborators.length > 0 && (
-                          <div>
-                            <label className="text-xs font-semibold text-gray-400 block mb-1">
-                              Collaborators (max 3)
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              {collaborators.map(collab => {
-                                const isSelected = image.selectedCollaborators.includes(collab.username);
-                                const isDisabled = !isSelected && image.selectedCollaborators.length >= 3;
-                                return (
-                                  <button
-                                    key={collab.id}
-                                    onClick={() => toggleImageCollaborator(image.id, collab.username)}
-                                    disabled={isDisabled}
-                                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                                      isSelected
-                                        ? 'bg-purple-600 text-white'
-                                        : isDisabled
-                                          ? 'bg-[#383a40] text-gray-600 cursor-not-allowed'
-                                          : 'bg-[#383a40] text-gray-300 hover:bg-[#43454d]'
-                                    }`}
-                                  >
-                                    @{collab.username}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {image.selectedCollaborators.length > 0 && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Selected: {image.selectedCollaborators.map(u => `@${u}`).join(', ')}
-                              </p>
-                            )}
-                          </div>
-                        )}
+                        <CollaboratorsSection
+                          collaborators={collaborators}
+                          selectedCollaborators={image.selectedCollaborators}
+                          onToggle={(username) => toggleImageCollaborator(image.id, username)}
+                          onAddNew={async (username) => {
+                            try {
+                              const res = await fetch('/api/collaborators', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ username }),
+                              });
+                              if (res.ok) {
+                                const newCollab = await res.json();
+                                setCollaborators(prev => [...prev, newCollab]);
+                              } else {
+                                const error = await res.json();
+                                alert(error.error || 'Failed to add collaborator');
+                              }
+                            } catch (error) {
+                              console.error('Error adding collaborator:', error);
+                            }
+                          }}
+                        />
                       </div>
                     </div>
                   ))}
