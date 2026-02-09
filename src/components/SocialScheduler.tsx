@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { upload } from '@vercel/blob/client';
 import {
   Upload, Calendar, Instagram, Trash2, Settings, Clock,
-  Loader2, ChevronUp, ChevronDown, Plus, History, GripVertical,
+  Loader2, ChevronUp, ChevronDown, Plus, History, GripVertical, HelpCircle,
 } from 'lucide-react';
 import {
   DndContext,
@@ -192,7 +192,7 @@ function CollaboratorsSection({ collaborators, selectedCollaborators, onToggle, 
 type PostType = 'queued' | 'scheduled';
 type UploadType = 'queued' | 'scheduled' | 'immediate';
 type PostStatus = 'pending' | 'published' | 'failed';
-type ActiveTab = 'upload' | 'schedule' | 'history';
+type ActiveTab = 'upload' | 'schedule' | 'history' | 'info';
 
 interface Post {
   id: number;
@@ -1120,6 +1120,7 @@ export default function SocialScheduler() {
             { key: 'upload' as ActiveTab, icon: Upload, label: 'Upload', mobileLabel: 'Upload' },
             { key: 'schedule' as ActiveTab, icon: Calendar, label: `Schedule (${totalPending})`, mobileLabel: `(${totalPending})` },
             { key: 'history' as ActiveTab, icon: History, label: 'History', mobileLabel: 'History' },
+            { key: 'info' as ActiveTab, icon: HelpCircle, label: 'Help', mobileLabel: '?' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -1166,20 +1167,6 @@ export default function SocialScheduler() {
 
             {images.length > 0 && (
               <>
-                <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6">
-                  <button
-                    onClick={uploadAll}
-                    disabled={uploading}
-                    className="w-full bg-gradient-to-r from-green-600 to-teal-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-green-500 hover:to-teal-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {uploading ? (
-                      <><Loader2 size={20} className="animate-spin" /> Uploading...</>
-                    ) : (
-                      <><Plus size={20} /> Upload {images.length} Post{images.length !== 1 ? 's' : ''}</>
-                    )}
-                  </button>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {images.map((image) => (
                     <div key={image.id} className="bg-[#2b2d31] rounded-lg shadow-lg overflow-hidden">
@@ -1299,6 +1286,21 @@ export default function SocialScheduler() {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Upload button - at the bottom */}
+                <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6">
+                  <button
+                    onClick={uploadAll}
+                    disabled={uploading}
+                    className="w-full bg-gradient-to-r from-green-600 to-teal-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-green-500 hover:to-teal-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {uploading ? (
+                      <><Loader2 size={20} className="animate-spin" /> Uploading...</>
+                    ) : (
+                      <><Plus size={20} /> Upload {images.length} Post{images.length !== 1 ? 's' : ''}</>
+                    )}
+                  </button>
                 </div>
               </>
             )}
@@ -1470,6 +1472,83 @@ export default function SocialScheduler() {
                 <p className="text-gray-500 mt-2">Published posts will appear here.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ─── Info/Help Tab ─────────────────────────────────────────────── */}
+        {activeTab === 'info' && (
+          <div className="space-y-4">
+            <div className="bg-[#2b2d31] rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-bold text-gray-100 mb-4 flex items-center gap-2">
+                <HelpCircle className="text-purple-400" size={24} />
+                How to Use Social Post Scheduler
+              </h2>
+              
+              <div className="space-y-6 text-gray-300">
+                {/* Getting Started */}
+                <section>
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">🚀 Getting Started</h3>
+                  <ol className="list-decimal list-inside space-y-1 text-sm ml-2">
+                    <li>Upload images using the <strong>Upload</strong> tab</li>
+                    <li>Choose whether to <strong>Queue</strong>, <strong>Schedule</strong>, or post <strong>Now</strong></li>
+                    <li>Add captions and collaborators</li>
+                    <li>Check the <strong>Schedule</strong> tab to see when posts will go out</li>
+                  </ol>
+                </section>
+
+                {/* Post Types */}
+                <section>
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">📝 Post Types</h3>
+                  <div className="space-y-2 text-sm ml-2">
+                    <p><span className="px-2 py-0.5 bg-blue-500/30 text-blue-300 rounded-full text-xs font-semibold">Queue</span> — Posts are published in order, one per day (or your chosen frequency)</p>
+                    <p><span className="px-2 py-0.5 bg-purple-500/30 text-purple-300 rounded-full text-xs font-semibold">Scheduled</span> — Pin a post to a specific date. It <strong>replaces</strong> the queue for that day</p>
+                    <p><span className="px-2 py-0.5 bg-orange-500/30 text-orange-300 rounded-full text-xs font-semibold">Extra</span> — Pin a post to a date <strong>in addition to</strong> the queue (doesn&apos;t consume it)</p>
+                    <p><span className="px-2 py-0.5 bg-green-500/30 text-green-300 rounded-full text-xs font-semibold">Post Now</span> — Immediately publishes to Instagram</p>
+                  </div>
+                </section>
+
+                {/* Queue Management */}
+                <section>
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">📋 Queue Management</h3>
+                  <ul className="list-disc list-inside space-y-1 text-sm ml-2">
+                    <li>Drag and drop posts in the <strong>Schedule</strong> tab to reorder your queue</li>
+                    <li>Click <strong>Edit</strong> on any post to change caption, type, or collaborators</li>
+                    <li>Pause your queue in <strong>Settings</strong> if you need a break from posting</li>
+                  </ul>
+                </section>
+
+                {/* Collaborators */}
+                <section>
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">👥 Collaborators</h3>
+                  <ul className="list-disc list-inside space-y-1 text-sm ml-2">
+                    <li>Add up to 3 collaborators per post</li>
+                    <li>Collaborators must have <strong>public accounts</strong> — private accounts will cause failures</li>
+                    <li>Manage your frequent collaborators in <strong>Settings</strong></li>
+                  </ul>
+                </section>
+
+                {/* Settings */}
+                <section>
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">⚙️ Settings</h3>
+                  <ul className="list-disc list-inside space-y-1 text-sm ml-2">
+                    <li><strong>Posting Frequency</strong> — Daily, Every Other Day, 3x/Week, or Weekdays</li>
+                    <li><strong>Posting Time</strong> — Choose what hour your posts go out (in Eastern Time)</li>
+                    <li><strong>Queue Pause</strong> — Temporarily stop automatic posting</li>
+                  </ul>
+                </section>
+
+                {/* Tips */}
+                <section>
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">💡 Tips</h3>
+                  <ul className="list-disc list-inside space-y-1 text-sm ml-2">
+                    <li>The header shows how many days of content you have queued</li>
+                    <li>Keep your queue filled to maintain consistent posting</li>
+                    <li>Check <strong>History</strong> for failed posts — usually collaborator issues</li>
+                    <li>Images are compressed after posting to save storage</li>
+                  </ul>
+                </section>
+              </div>
+            </div>
           </div>
         )}
       </div>
