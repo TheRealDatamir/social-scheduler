@@ -25,6 +25,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { POSTING_HOUR, getPostingTimeDisplay, isPastPostingTime } from '@/lib/config';
 
 // ─── Editable Caption Component ──────────────────────────────────────────────
 // Manages its own local state to prevent parent re-renders on each keystroke
@@ -252,13 +253,10 @@ export default function SocialScheduler() {
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
 
-    // Cron runs at 3 PM ET (15:00). If it's past 3 PM, today's slot is gone - start from tomorrow
-    const cronHour = 15; // 3 PM
-    const isPastCronTime = now.getHours() >= cronHour;
-    
+    // If past posting time, today's slot is gone - start from tomorrow
     const cursor = new Date(today);
-    if (isPastCronTime) {
-      cursor.setDate(cursor.getDate() + 1); // Start from tomorrow if past 3 PM
+    if (isPastPostingTime()) {
+      cursor.setDate(cursor.getDate() + 1);
     }
 
     let daysProjected = 0;
@@ -914,7 +912,7 @@ export default function SocialScheduler() {
               </div>
               <div className="flex items-center gap-2 mt-2 text-xs sm:text-sm text-blue-400">
                 <Clock size={14} className="flex-shrink-0" />
-                <span>Posts at 3:00 PM ET · {settings.postingFrequency.replace(/-/g, ' ')}</span>
+                <span>Posts at {getPostingTimeDisplay()} · {settings.postingFrequency.replace(/-/g, ' ')}</span>
               </div>
             </div>
             

@@ -6,6 +6,7 @@ import { signOut } from 'next-auth/react';
 import {
   ArrowLeft, Instagram, Loader2, LogOut, UserPlus, X, Users
 } from 'lucide-react';
+import { getPostingTimeDisplay } from '@/lib/config';
 
 interface ConnectedAccount {
   id: number;
@@ -241,7 +242,7 @@ export default function SettingsPage() {
               {/* Posting time info - below frequency */}
               <div className="p-4 bg-blue-500/20 rounded-lg">
                 <p className="text-blue-300 text-sm">
-                  <strong>Note:</strong> All posts are published at <strong>3:00 PM ET</strong> daily.
+                  <strong>Note:</strong> All posts are published at <strong>{getPostingTimeDisplay()}</strong> daily.
                   The frequency setting controls which days posts go out.
                 </p>
               </div>
