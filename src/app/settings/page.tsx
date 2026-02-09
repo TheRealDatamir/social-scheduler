@@ -222,6 +222,7 @@ export default function SettingsPage() {
             <h2 className="text-lg font-bold text-gray-100 mb-4">Posting Settings</h2>
 
             <div className="space-y-4">
+              {/* Posting Frequency */}
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
                   Posting Frequency
@@ -235,6 +236,14 @@ export default function SettingsPage() {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Posting time info - below frequency */}
+              <div className="p-4 bg-blue-500/20 rounded-lg">
+                <p className="text-blue-300 text-sm">
+                  <strong>Note:</strong> All posts are published at <strong>3:00 PM ET</strong> daily.
+                  The frequency setting controls which days posts go out.
+                </p>
               </div>
 
               {/* Queue Active Toggle - ON = active, OFF = paused */}
@@ -265,13 +274,14 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="p-4 bg-blue-500/20 rounded-lg">
-                <p className="text-blue-300 text-sm">
-                  <strong>Note:</strong> All posts are published at <strong>3:00 PM ET</strong> daily.
-                  The frequency setting controls which days posts go out.
-                  {queuePaused && <><br /><strong className="text-yellow-300">Queue is paused</strong> — scheduled posts and "Post Now" still work.</>}
-                </p>
-              </div>
+              {/* Queue paused info - only shown when paused */}
+              {queuePaused && (
+                <div className="p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+                  <p className="text-yellow-300 text-sm">
+                    <strong>Queue is paused</strong> — scheduled posts and "Post Now" still work, but queued posts will not automatically publish.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
