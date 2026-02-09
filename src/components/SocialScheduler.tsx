@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { upload } from '@vercel/blob/client';
 import {
   Upload, Calendar, Instagram, Trash2, Settings, Clock,
@@ -25,6 +25,59 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// ─── Editable Caption Component ──────────────────────────────────────────────
+// Manages its own local state to prevent parent re-renders on each keystroke
+
+interface EditableCaptionProps {
+  value: string;
+  onChange: (value: string) => void;
+  maxLength: number;
+}
+
+const EditableCaption = memo(function EditableCaption({ value, onChange, maxLength }: EditableCaptionProps) {
+  const [localValue, setLocalValue] = useState(value);
+
+  // Sync local state when parent value changes (e.g., when starting to edit a different post)
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  // Only sync to parent on blur - this prevents parent re-renders during typing
+  const handleBlur = () => {
+    onChange(localValue);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setLocalValue(e.target.value);
+    // Don't call onChange here - only on blur to prevent focus loss
+  };
+
+  return (
+    <div>
+      <textarea
+        value={localValue}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={`w-full bg-[#383a40] border text-gray-200 rounded-lg p-2 text-sm ${
+          localValue.length > maxLength
+            ? 'border-red-500'
+            : 'border-[#4a4d55]'
+        }`}
+        rows={2}
+      />
+      <div className="flex justify-end mt-1">
+        <span className={`text-xs ${
+          localValue.length > maxLength 
+            ? 'text-red-400 font-semibold' 
+            : 'text-gray-500'
+        }`}>
+          {localValue.length}/{maxLength}
+        </span>
+      </div>
+    </div>
+  );
+});
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -198,7 +251,7 @@ export default function SocialScheduler() {
     today.setHours(0, 0, 0, 0);
 
     const cursor = new Date(today);
-    cursor.setDate(cursor.getDate() + 1); // Start from tomorrow
+    // Start from today - posts go out at 3 PM ET, so show today's post until it's published
 
     let daysProjected = 0;
 
@@ -736,25 +789,11 @@ export default function SocialScheduler() {
           {isEditing ? (
             <div className="space-y-2 mt-1">
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs text-gray-400">Caption</span>
-                  <span className={`text-xs ${
-                    editingCaption.length > MAX_CAPTION_LENGTH 
-                      ? 'text-red-400 font-semibold' 
-                      : 'text-gray-500'
-                  }`}>
-                    {editingCaption.length}/{MAX_CAPTION_LENGTH}
-                  </span>
-                </div>
-                <textarea
+                <span className="text-xs text-gray-400 block mb-1">Caption</span>
+                <EditableCaption
                   value={editingCaption}
-                  onChange={(e) => setEditingCaption(e.target.value)}
-                  className={`w-full bg-[#383a40] border text-gray-200 rounded-lg p-2 text-sm ${
-                    editingCaption.length > MAX_CAPTION_LENGTH
-                      ? 'border-red-500'
-                      : 'border-[#4a4d55]'
-                  }`}
-                  rows={2}
+                  onChange={setEditingCaption}
+                  maxLength={MAX_CAPTION_LENGTH}
                 />
               </div>
               <div>

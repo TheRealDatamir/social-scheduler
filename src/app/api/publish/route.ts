@@ -1,8 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { posts, socialAccounts, accounts } from "@/db/schema";
-import { eq, and, asc, lte, sql } from "drizzle-orm";
-import { postToInstagram, isDryRunEnabled } from "@/lib/instagram";
+import { eq, and, asc, lte, lt, sql, isNotNull } from "drizzle-orm";
+import { postToInstagram, isDryRunEnabled, refreshAccessToken } from "@/lib/instagram";
+
+// ─── Token Refresh Logic ────────────────────────────────────────────────────
+
+const REFRESH_THRESHOLD_DAYS = 7;
+
+async function refreshExpiringTokens(): Promise<{
+  checked: number;
+  refreshed: number;
+  failed: number;
+  results: Array<{ userId: string; status: string; error?: string }>;
+}> {
+  const now = Math.floor(Date.now() / 1000);
+  const thresholdTime = now + (REFRESH_THRESHOLD_DAYS * 24 * 60 * 60);
+
+  // Find Instagram accounts with tokens expiring within threshold
+  const expiringAccounts = await db
+    .select()
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.provider, "instagram"),
+        isNotNull(accounts.access_token),
+        isNotNull(accounts.expires_at),
+        lt(accounts.expires_at, thresholdTime)
+      )
+    );
+
+  const results: Array<{ userId: string; status: string; error?: string }> = [];
+  let refreshed = 0;
+  let failed = 0;
+
+  for (const account of expiringAccounts) {
+    try {
+      if (!account.access_token) continue;
+
+      const refreshedToken = await refreshAccessToken(account.access_token);
+      const newExpiresAt = Math.floor(Date.now() / 1000) + refreshedToken.expires_in;
+
+      await db
+        .update(accounts)
+        .set({
+          access_token: refreshedToken.access_token,
+          expires_at: newExpiresAt,
+        })
+        .where(
+          and(
+            eq(accounts.userId, account.userId),
+            eq(accounts.provider, "instagram")
+          )
+        );
+
+      results.push({ userId: account.userId, status: "refreshed" });
+      refreshed++;
+    } catch (error) {
+      results.push({
+        userId: account.userId,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      failed++;
+    }
+  }
+
+  return { checked: expiringAccounts.length, refreshed, failed, results };
+}
+
+// ─── Publish Logic ──────────────────────────────────────────────────────────
 
 // Helper: Get the start and end of today (UTC)
 function getTodayRange(): { start: Date; end: Date } {
@@ -90,13 +157,18 @@ async function publishPost(
   }
 }
 
-// POST /api/publish - Daily publish logic (called by cron)
+// POST /api/publish - Daily maintenance cron
 //
-// Logic per account:
-// 1. Find all scheduled posts due today → publish all
-// 2. If ANY scheduled post has isExtra=false → it consumes the queue (skip queue)
-// 3. If ALL scheduled posts have isExtra=true (or no scheduled posts) → pull from queue
-// 4. If queue is empty → skip
+// This is the SINGLE daily cron that handles all maintenance tasks:
+// 1. Refresh any Instagram tokens expiring within 7 days
+// 2. Publish scheduled posts due today
+// 3. Pull from queue if no scheduled post consumed it
+//
+// Logic per account for publishing:
+// - Find all scheduled posts due today → publish all
+// - If ANY scheduled post has isExtra=false → it consumes the queue (skip queue)
+// - If ALL scheduled posts have isExtra=true (or no scheduled posts) → pull from queue
+// - If queue is empty → skip
 export async function POST(request: NextRequest) {
   // Auth check
   const authHeader = request.headers.get("authorization");
@@ -105,6 +177,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // ─── Step 1: Token Refresh ────────────────────────────────────────────
+    const tokenRefreshResults = await refreshExpiringTokens();
+
+    // ─── Step 2: Publish Posts ────────────────────────────────────────────
     const { start, end } = getTodayRange();
     const allResults: Array<{
       accountId: number;
@@ -193,12 +269,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       date: new Date().toISOString().slice(0, 10),
       dryRun: isDryRunEnabled(),
-      accountsProcessed: allResults.length,
-      results: allResults,
+      // Token refresh results
+      tokenRefresh: {
+        checked: tokenRefreshResults.checked,
+        refreshed: tokenRefreshResults.refreshed,
+        failed: tokenRefreshResults.failed,
+      },
+      // Publishing results
+      publishing: {
+        accountsProcessed: allResults.length,
+        results: allResults,
+      },
     });
   } catch (error) {
-    console.error("Publish cron failed:", error);
-    return NextResponse.json({ error: "Publish failed" }, { status: 500 });
+    console.error("Daily maintenance cron failed:", error);
+    return NextResponse.json({ error: "Maintenance cron failed" }, { status: 500 });
   }
 }
 
