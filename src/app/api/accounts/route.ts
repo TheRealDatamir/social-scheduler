@@ -37,37 +37,51 @@ export async function GET() {
         sa => sa.platformAccountId === instagramAccount.providerAccountId
       );
 
-      if (!existingSocial) {
-        // Need to fetch Instagram profile and create the social account
-        try {
-          const profileRes = await fetch(
-            `https://graph.instagram.com/me?fields=id,username,name,account_type,profile_picture_url&access_token=${instagramAccount.access_token}`
+      // Always fetch fresh profile from Instagram to keep profile picture up to date
+      try {
+        const profileRes = await fetch(
+          `https://graph.instagram.com/me?fields=id,username,name,account_type,profile_picture_url&access_token=${instagramAccount.access_token}`
+        );
+        const profile = await profileRes.json();
+
+        if (profile.error) {
+          syncError = profile.error.message;
+        } else if (!existingSocial) {
+          // Create new social account
+          const [newAccount] = await db
+            .insert(socialAccounts)
+            .values({
+              userId: session.user.id,
+              platform: "instagram",
+              platformAccountId: profile.id,
+              identifier: profile.username,
+              displayName: profile.name || profile.username,
+              profilePicture: profile.profile_picture_url || null,
+              isActive: true,
+            })
+            .returning();
+
+          storedAccounts = [newAccount];
+        } else {
+          // Update existing account with fresh profile info
+          const [updatedAccount] = await db
+            .update(socialAccounts)
+            .set({
+              identifier: profile.username,
+              displayName: profile.name || profile.username,
+              profilePicture: profile.profile_picture_url || null,
+            })
+            .where(eq(socialAccounts.id, existingSocial.id))
+            .returning();
+
+          // Replace in storedAccounts array
+          storedAccounts = storedAccounts.map(sa => 
+            sa.id === existingSocial.id ? updatedAccount : sa
           );
-          const profile = await profileRes.json();
-
-          if (profile.error) {
-            syncError = profile.error.message;
-          } else {
-            // Auto-create the social account
-            const [newAccount] = await db
-              .insert(socialAccounts)
-              .values({
-                userId: session.user.id,
-                platform: "instagram",
-                platformAccountId: profile.id,
-                identifier: profile.username,
-                displayName: profile.name || profile.username,
-                profilePicture: profile.profile_picture_url || null,
-                isActive: true,
-              })
-              .returning();
-
-            storedAccounts = [newAccount];
-          }
-        } catch (error) {
-          console.error("Error fetching Instagram profile:", error);
-          syncError = "Failed to sync Instagram account";
         }
+      } catch (error) {
+        console.error("Error fetching Instagram profile:", error);
+        syncError = "Failed to sync Instagram account";
       }
     }
 
