@@ -42,7 +42,7 @@ export const posts = sqliteTable("posts", {
 - **Database:** Turso (SQLite edge database)
 - **ORM:** Drizzle
 - **Hosting:** Vercel
-- **Auth:** NextAuth.js v5 with Facebook OAuth
+- **Auth:** NextAuth.js v5 with Instagram OAuth
 - **Platform:** Instagram (Meta Graph API)
 
 ## Project Structure
@@ -70,7 +70,7 @@ src/
 ```
 
 ## Authentication
-- Users log in with Facebook OAuth
+- Users log in with Instagram OAuth (Business/Creator accounts)
 - Grants permissions for Instagram content publishing
 - User's Instagram Business Account ID + access token stored per-user in `social_accounts` table
 - All API routes (except /api/auth/* and /api/publish) require authentication
@@ -90,10 +90,23 @@ Required in `.env.local` and Vercel:
 - `TURSO_AUTH_TOKEN` - Turso auth token
 - `AUTH_SECRET` - NextAuth secret (generate with `openssl rand -base64 32`)
 - `NEXTAUTH_URL` - App URL (e.g., http://localhost:3000)
-- `FACEBOOK_CLIENT_ID` - Meta App ID
-- `FACEBOOK_CLIENT_SECRET` - Meta App Secret
+- `INSTAGRAM_CLIENT_ID` - Meta App ID (for Instagram OAuth)
+- `INSTAGRAM_CLIENT_SECRET` - Meta App Secret
 - `BLOB_READ_WRITE_TOKEN` - Vercel Blob token (for Vercel deployment)
 - `CRON_SECRET` - Optional secret to protect /api/publish
+
+## Git Practices
+
+### ⛔ NEVER Force Push
+**Do not use `git push --force` or `git push -f` under any circumstances.**
+
+Force pushing has previously caused data loss on this project. If you encounter push conflicts:
+1. `git fetch origin`
+2. `git rebase origin/main` (or merge)
+3. Resolve any conflicts
+4. `git push` normally
+
+If you're ever tempted to force push, stop and ask the user first.
 
 ## Running Migrations
 After schema changes:
