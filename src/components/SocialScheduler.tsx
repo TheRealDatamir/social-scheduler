@@ -206,6 +206,7 @@ interface Post {
   publishedAt: string | null;
   error: string | null;
   createdAt: string;
+  collaboratorUsernames: string | null; // JSON array of usernames
 }
 
 interface AppSettings {
@@ -954,7 +955,18 @@ export default function SocialScheduler() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-300 line-clamp-2">{post.caption}</p>
+            <>
+              <p className="text-sm text-gray-300 line-clamp-2">{post.caption}</p>
+              {post.collaboratorUsernames && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {JSON.parse(post.collaboratorUsernames).map((username: string) => (
+                    <span key={username} className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded-full">
+                      @{username}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {isDeleting && (
