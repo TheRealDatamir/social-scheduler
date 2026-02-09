@@ -248,11 +248,18 @@ export default function SocialScheduler() {
       }
     }
 
-    const today = new Date();
+    const now = new Date();
+    const today = new Date(now);
     today.setHours(0, 0, 0, 0);
 
+    // Cron runs at 3 PM ET (15:00). If it's past 3 PM, today's slot is gone - start from tomorrow
+    const cronHour = 15; // 3 PM
+    const isPastCronTime = now.getHours() >= cronHour;
+    
     const cursor = new Date(today);
-    // Start from today - posts go out at 3 PM ET, so show today's post until it's published
+    if (isPastCronTime) {
+      cursor.setDate(cursor.getDate() + 1); // Start from tomorrow if past 3 PM
+    }
 
     let daysProjected = 0;
 
