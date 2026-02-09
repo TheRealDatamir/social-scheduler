@@ -262,6 +262,7 @@ export default function SocialScheduler() {
   const [editingDate, setEditingDate] = useState('');
   const [editingType, setEditingType] = useState<PostType>('queued');
   const [editingIsExtra, setEditingIsExtra] = useState(false);
+  const [editingCollaborators, setEditingCollaborators] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
 
   const [settings, setSettings] = useState<AppSettings>({
@@ -703,6 +704,12 @@ export default function SocialScheduler() {
     setEditingDate(post.scheduledAt ? new Date(post.scheduledAt).toISOString().slice(0, 10) : '');
     setEditingType(post.type);
     setEditingIsExtra(post.isExtra);
+    // Parse collaborators from JSON string
+    try {
+      setEditingCollaborators(post.collaboratorUsernames ? JSON.parse(post.collaboratorUsernames) : []);
+    } catch {
+      setEditingCollaborators([]);
+    }
   }
 
   function cancelEditing() {
@@ -711,6 +718,7 @@ export default function SocialScheduler() {
     setEditingDate('');
     setEditingType('queued');
     setEditingIsExtra(false);
+    setEditingCollaborators([]);
   }
 
   async function saveEdits() {
@@ -726,6 +734,7 @@ export default function SocialScheduler() {
         caption: editingCaption,
         type: editingType,
         isExtra: editingType === 'scheduled' ? editingIsExtra : false,
+        collaboratorUsernames: editingCollaborators,
       };
 
       if (editingType === 'scheduled') {
@@ -945,6 +954,36 @@ export default function SocialScheduler() {
                   </label>
                 </>
               )}
+              {/* Collaborators */}
+              <CollaboratorsSection
+                collaborators={collaborators}
+                selectedCollaborators={editingCollaborators}
+                onToggle={(username) => {
+                  setEditingCollaborators(prev => 
+                    prev.includes(username) 
+                      ? prev.filter(u => u !== username)
+                      : prev.length < 3 ? [...prev, username] : prev
+                  );
+                }}
+                onAddNew={async (username) => {
+                  try {
+                    const res = await fetch('/api/collaborators', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username }),
+                    });
+                    if (res.ok) {
+                      const newCollab = await res.json();
+                      setCollaborators(prev => [...prev, newCollab]);
+                    } else {
+                      const error = await res.json();
+                      alert(error.error || 'Failed to add collaborator');
+                    }
+                  } catch (error) {
+                    console.error('Error adding collaborator:', error);
+                  }
+                }}
+              />
               <div className="flex gap-2">
                 <button onClick={saveEdits} className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-semibold hover:bg-blue-500">
                   Save

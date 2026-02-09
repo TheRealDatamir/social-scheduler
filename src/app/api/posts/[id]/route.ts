@@ -77,6 +77,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     if (body.queueOrder !== undefined) allowedFields.queueOrder = body.queueOrder;
     if (body.imageUrl !== undefined) allowedFields.imageUrl = body.imageUrl;
+    if (body.collaboratorUsernames !== undefined) {
+      // Validate and store as JSON string
+      const collabs = Array.isArray(body.collaboratorUsernames) 
+        ? body.collaboratorUsernames.slice(0, 3).map((u: string) => u.replace(/^@/, '').trim().toLowerCase()).filter(Boolean)
+        : [];
+      allowedFields.collaboratorUsernames = collabs.length > 0 ? JSON.stringify(collabs) : null;
+    }
 
     const [updated] = await db
       .update(posts)
