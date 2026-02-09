@@ -169,8 +169,10 @@ async function publishPost(
 // - If ANY scheduled post has isExtra=false → it consumes the queue (skip queue)
 // - If ALL scheduled posts have isExtra=true (or no scheduled posts) → pull from queue
 // - If queue is empty → skip
-export async function POST(request: NextRequest) {
-  // Auth check
+
+// Vercel crons send GET requests
+export async function GET(request: NextRequest) {
+  // Auth check - Vercel crons include CRON_SECRET in Authorization header
   const authHeader = request.headers.get("authorization");
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -285,9 +287,4 @@ export async function POST(request: NextRequest) {
     console.error("Daily maintenance cron failed:", error);
     return NextResponse.json({ error: "Maintenance cron failed" }, { status: 500 });
   }
-}
-
-// GET for easy testing
-export async function GET(request: NextRequest) {
-  return POST(request);
 }
